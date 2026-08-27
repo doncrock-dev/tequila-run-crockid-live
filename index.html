@@ -83,10 +83,11 @@
     color:white; font-weight:900; font-size:clamp(14px,4vw,20px); text-shadow:0 2px 7px #000b;
     pointer-events:none; z-index:3;
   }
-  .hud > div:last-child {
+  .hud > div:not(:first-child) {
     padding:6px 10px; border-radius:12px; background:rgba(17,24,39,.52);
     /* Avoid backdrop-filter: expensive in iOS/WKWebView while canvas animates. */
   }
+  .hud > div:nth-child(3) { font-size:clamp(11px,3.2vw,15px); white-space:nowrap; }
   .panel {
     position:absolute; inset:0; z-index:6; display:grid; place-items:center; background:rgba(0,0,0,.34);
     /* Solid translucent layer is smoother than backdrop-filter in WKWebView. */
@@ -137,11 +138,12 @@
     <div class="hud">
       <div>🏃 Tequila Run</div>
       <div><span id="score">0</span> м · рекорд <span id="best">0</span> · 💥 <span id="hits">0</span>/5</div>
+      <div>🔥 комбо <span id="combo">×1</span> · ☕ <span id="coffeeState">ищем кофе</span> · 📕 босс <span id="bossState">500 м</span></div>
     </div>
     <div id="startPanel" class="panel">
       <div class="card">
         <h1>TEQUILA RUN</h1>
-        <p>Перепрыгивай препятствия. Каждое столкновение запускает свою реакцию, а после пятого — Галя отмена!</p>
+        <p>Перепрыгивай препятствия, собирай кофе и держи комбо. Каждые 500 м прилетает ДЕДЛАЙН. После пятого столкновения — Галя отмена!</p>
         <button id="startBtn">Старт</button>
         <div class="small">На смартфоне: нажми «ПРЫЖОК» или коснись игрового поля</div>
       </div>
@@ -320,6 +322,22 @@ function sfxStickWhack(){
   setTimeout(()=>tone(510,.15,'triangle',.035,760),165);
   setTimeout(()=>tone(690,.22,'sawtooth',.018,430),265);
 }
+function sfxCoffee(){
+  tone(880,.07,'sine',.045,1320);
+  setTimeout(()=>tone(1320,.08,'triangle',.04,1760),70);
+  setTimeout(()=>tone(260,.16,'sine',.035,150),155);
+}
+function sfxBossWarning(){
+  [220,220,330].forEach((f,i)=>setTimeout(()=>tone(f,.14,'square',.045,f*.98),i*150));
+}
+function sfxDeadlineWin(){
+  [392,523,659,784].forEach((f,i)=>setTimeout(()=>tone(f,.13,'triangle',.05,f*1.04),i*70));
+}
+function sfxDeadlineHit(){
+  tone(95,.28,'sawtooth',.075,55);
+  setTimeout(()=>noise(.24,.075,1600),35);
+  setTimeout(()=>tone(180,.12,'square',.04,95),120);
+}
 
 function speakFunny(text) {
   if (!soundOn || !('speechSynthesis' in window)) return;
@@ -339,6 +357,8 @@ let screenShake=0, screenFlash=0, flashRgb='255,255,255';
 let nextMilestone=100;
 let drunkTimer=0, gasTimer=0, stickTimer=0, hitCooldown=0;
 let hits=0, fatalTimer=0, fatalHit=null, dead=false, deathAge=0;
+let combo=0, nextCoffee=230, coffeeCooldown=0;
+let nextBoss=500, bossWarningTimer=0, bossActive=false;
 const MAX_HITS=5;
 const DRUNK_DURATION=155, GAS_DURATION=145, STICK_DURATION=48;
 let domDrunk=false, domGas=false;
@@ -371,10 +391,26 @@ function onJumpFx(){
   burst(player.x+player.w*.45, groundY-8, '💨', 4, 3.6);
 }
 function onDodge(o){
+  if (o.type==='deadline') {
+    bossActive=false;
+    combo=5;
+    score+=120;
+    sfxDeadlineWin(); flash('255,215,70',.34); shake(8);
+    comic('ДЕДЛАЙН ЗАКРЫТ!',W*.50,H*.27,54,72);
+    comic('+120 М · КОМБО ×5',W*.50,H*.34,27,60);
+    ['📄','✅','🎉','⭐'].forEach((em,i)=>setTimeout(()=>burst(W*(.25+i*.17),H*.38,em,6,6),i*45));
+    telegramHaptic('medium');
+    updateV2Hud();
+    return;
+  }
   sfxDodge(o.type);
   const em=o.type==='tequila'?'🥃':o.type==='spray'?'🌶️':'🐎';
+  addCombo(1);
+  const bonus=comboMultiplier()*2;
+  score+=bonus;
   comic(dodgeWords[(Math.random()*dodgeWords.length)|0], player.x+90, player.y+10, 30, 38);
   burst(player.x+105, player.y+70, em, o.type==='rider'?5:4, 4.3);
+  if (combo>=3) burst(player.x+82,player.y+34,'🔥',3,3.2);
   if (Math.random()<.32) flash('255,255,255',.10);
 }
 function milestoneFx(m){
@@ -385,7 +421,7 @@ function milestoneFx(m){
 }
 function crashFx(o){
   sfxCrash(o?.type || 'tequila'); shake(o?.type==='rider'?28:22); flash('255,70,70',.58);
-  const em=o?.type==='tequila'?'🥃':o?.type==='spray'?'🌶️':'🐎';
+  const em=o?.type==='tequila'?'🥃':o?.type==='spray'?'🌶️':o?.type==='deadline'?'📕':'🐎';
   burst(player.x+player.w/2,player.y+player.h/2,em,14,9);
   burst(player.x+player.w/2,player.y+player.h/2,'💥',9,7);
   comic('БАБАХ!',W*.5,H*.29,78,64);
@@ -433,20 +469,54 @@ function riderReaction(o){
   if (navigator.vibrate) navigator.vibrate([35,25,65]);
   telegramHaptic('medium');
 }
+function deadlineReaction(o){
+  hitCooldown=62;
+  bossActive=false;
+  o.reacted=true; o.fade=1; o.spin=.10;
+  sfxDeadlineHit(); shake(20); flash('235,45,55',.42);
+  burst(o.x+o.w*.5,o.y+o.h*.45,'📄',16,9);
+  burst(o.x+o.w*.5,o.y+o.h*.45,'💥',7,6);
+  comic('ДЕДЛАЙН ПРИЛЕТЕЛ!',W*.50,H*.27,48,64);
+  if (navigator.vibrate) navigator.vibrate([60,30,90]);
+  telegramHaptic('heavy');
+}
 
 function updateHitsHud(){
   const el=document.getElementById('hits');
   if (el) el.textContent=hits;
 }
+function comboMultiplier(){ return Math.max(1,Math.min(5,combo)); }
+function updateV2Hud(){
+  const c=document.getElementById('combo');
+  const coffee=document.getElementById('coffeeState');
+  const boss=document.getElementById('bossState');
+  if (c) c.textContent='×'+comboMultiplier();
+  if (coffee) coffee.textContent=hits>0?'может спасти':'бонус +40 м';
+  if (boss) {
+    if (bossActive) boss.textContent='СЕЙЧАС!';
+    else if (bossWarningTimer>0) boss.textContent='⚠️';
+    else boss.textContent=Math.max(0,Math.ceil(nextBoss-score))+' м';
+  }
+}
+function resetCombo(show=false){
+  if (combo>1 && show) comic('КОМБО СГОРЕЛО!',W*.54,H*.22,32,44);
+  combo=0; updateV2Hud();
+}
+function addCombo(amount=1){
+  combo=Math.min(5,combo+amount); updateV2Hud();
+  if (combo>=2) comic('КОМБО ×'+comboMultiplier(),W*.72,H*.18,26+combo*2,34);
+}
 
 function handleObstacleHit(o){
   if (!running || hitCooldown>0 || o.reacted || fatalTimer>0) return;
   o.passed=true;
+  resetCombo(true);
   hits=Math.min(MAX_HITS,hits+1);
   updateHitsHud();
 
   if (o.type==='tequila') tequilaReaction(o);
   else if (o.type==='spray') sprayReaction(o);
+  else if (o.type==='deadline') deadlineReaction(o);
   else riderReaction(o);
 
   if (hits>=MAX_HITS) {
@@ -515,17 +585,20 @@ const player = {
 };
 
 let obstacles = [];
+let bonuses = [];
 let dust = [];
 
 function reset() {
-  score = 0; speed = BASE_SPEED; spawnTimer = 68; obstacles = []; dust = [];
+  score = 0; speed = BASE_SPEED; spawnTimer = 68; obstacles = []; bonuses = []; dust = [];
   fxParticles=[]; fxTexts=[]; screenShake=0; screenFlash=0; nextMilestone=100;
   drunkTimer=0; gasTimer=0; stickTimer=0; hitCooldown=0;
   hits=0; fatalTimer=0; fatalHit=null; dead=false; deathAge=0;
+  combo=0; nextCoffee=210+Math.random()*90; coffeeCooldown=0;
+  nextBoss=500; bossWarningTimer=0; bossActive=false;
   shell.classList.remove('is-drunk','is-gassed'); domDrunk=false; domGas=false;
   player.y = groundY-player.h; player.vy = 0; player.onGround = true;
   document.getElementById('score').textContent = '0';
-  updateHitsHud();
+  updateHitsHud(); updateV2Hud();
 }
 
 function spawnObstacle() {
@@ -550,6 +623,35 @@ function spawnObstacle() {
       wobble: Math.random()*Math.PI*2
     });
   }
+}
+
+function spawnCoffee(){
+  bonuses.push({type:'coffee',x:W+35,y:groundY-205,w:58,h:70,wobble:Math.random()*Math.PI*2});
+  nextCoffee=score+260+Math.random()*150;
+  coffeeCooldown=90;
+}
+function spawnDeadline(){
+  bossActive=true;
+  obstacles.push({type:'deadline',x:W+45,y:groundY-158,w:128,h:158,wobble:0,boss:true});
+  comic('📕 ДЕДЛАЙН!',W*.53,H*.26,62,68);
+  flash('255,80,80',.18);
+  updateV2Hud();
+}
+function collectCoffee(b){
+  b.collected=true;
+  sfxCoffee(); flash('255,245,190',.24);
+  burst(b.x+b.w*.5,b.y+b.h*.5,'☕',7,5);
+  burst(b.x+b.w*.5,b.y+b.h*.5,'✨',5,4);
+  if (hits>0) {
+    hits--; updateHitsHud();
+    comic('КОФЕ СПАС!',W*.52,H*.28,50,60);
+    comic('−1 СТОЛКНОВЕНИЕ',W*.52,H*.34,25,52);
+  } else {
+    score+=40; addCombo(1);
+    comic('КОФЕ +40 М!',W*.52,H*.29,46,58);
+  }
+  telegramHaptic('light');
+  updateV2Hud();
 }
 
 function bottle(o) {
@@ -810,9 +912,37 @@ function rider(o) {
   ctx.restore();
 }
 
+function drawCoffee(b){
+  ctx.save();
+  const bob=Math.sin(b.wobble)*5;
+  const x=b.x+b.w*.5,y=b.y+b.h*.5+bob,w=b.w,h=b.h;
+  ctx.fillStyle='rgba(0,0,0,.14)'; ctx.beginPath(); ctx.ellipse(x,y+h*.42,w*.38,5,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.75)'; ctx.lineWidth=5;
+  for(let i=0;i<2;i++){ ctx.beginPath(); ctx.moveTo(x-10+i*17,y-h*.38); ctx.quadraticCurveTo(x-18+i*18,y-h*.58,x-7+i*18,y-h*.68); ctx.stroke(); }
+  ctx.fillStyle='#f5efe2'; ctx.beginPath(); ctx.roundRect(x-w*.31,y-h*.26,w*.62,h*.49,8); ctx.fill();
+  ctx.strokeStyle='#c8b99d'; ctx.lineWidth=2; ctx.stroke();
+  ctx.strokeStyle='#f5efe2'; ctx.lineWidth=8; ctx.beginPath(); ctx.arc(x+w*.31,y-h*.02,w*.16,-Math.PI/2,Math.PI/2); ctx.stroke();
+  ctx.fillStyle='#5b3421'; ctx.beginPath(); ctx.ellipse(x,y-h*.24,w*.25,h*.055,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#d94742'; ctx.textAlign='center'; ctx.font='900 11px Arial'; ctx.fillText('CROCKID',x,y+h*.04);
+  ctx.restore();
+}
+function deadlineFolder(o){
+  ctx.save();
+  const x=o.x,y=o.y,w=o.w,h=o.h;
+  ctx.fillStyle='rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(x+w*.5,y+h*.96,w*.42,8,0,0,Math.PI*2); ctx.fill();
+  ctx.translate(x+w*.5,y+h*.5); ctx.rotate(Math.sin(o.wobble)*.025);
+  ctx.fillStyle='#b91c2f'; ctx.beginPath(); ctx.roundRect(-w*.45,-h*.44,w*.90,h*.82,10); ctx.fill();
+  ctx.fillStyle='#e23c4f'; ctx.beginPath(); ctx.roundRect(-w*.40,-h*.48,w*.44,h*.12,7); ctx.fill();
+  ctx.fillStyle='#fff7ed'; ctx.beginPath(); ctx.roundRect(-w*.31,-h*.22,w*.62,h*.36,5); ctx.fill();
+  ctx.fillStyle='#991b1b'; ctx.textAlign='center'; ctx.font=`900 ${Math.max(18,w*.18)}px Arial`; ctx.fillText('ДЕДЛАЙН',0,-h*.055);
+  ctx.font=`800 ${Math.max(12,w*.11)}px Arial`; ctx.fillText('СРОЧНО!',0,h*.07);
+  ctx.strokeStyle='#fee2e2'; ctx.lineWidth=4; ctx.strokeRect(-w*.45,-h*.44,w*.90,h*.82);
+  ctx.restore();
+}
 function drawObstacle(o) {
   if (o.type === 'spray') pepperSpray(o);
   else if (o.type === 'rider') rider(o);
+  else if (o.type === 'deadline') deadlineFolder(o);
   else bottle(o);
 }
 
@@ -1152,7 +1282,9 @@ function gameOver(hit) {
     ? ['Пятое столкновение. Последняя текила была лишней.','Пять ударов судьбы. Стеклотара ставит точку.']
     : hit?.type==='spray'
       ? ['Пятое столкновение. Газовая программа завершена.','Пять из пяти. Баллончик закрыл смену.']
-      : ['Пятое столкновение. Конница забрала KPI.','Пять из пяти. Палка уже не спасла.'];
+      : hit?.type==='deadline'
+        ? ['Пятое столкновение. Дедлайн оказался физическим.','Пять из пяти. Срочная папка победила.']
+        : ['Пятое столкновение. Конница забрала KPI.','Пять из пяти. Палка уже не спасла.'];
   const line=lines[(Math.random()*lines.length)|0];
   panel.querySelector('h1').textContent='Галя отмена!';
   panel.querySelector('p').innerHTML=`💀 Столкновений: <b>${hits}/${MAX_HITS}</b><br>Дистанция: <b>${Math.floor(score)} м</b><br>${line}`;
@@ -1170,8 +1302,23 @@ function update(dt) {
     player.y=groundY-player.h; player.vy=0; player.onGround=true;
   }
 
+  coffeeCooldown=Math.max(0,coffeeCooldown-dt);
+  if (score>=nextCoffee && coffeeCooldown<=0 && bonuses.length===0 && !bossActive && bossWarningTimer<=0) spawnCoffee();
+
+  if (score>=nextBoss && !bossActive && bossWarningTimer<=0) {
+    bossWarningTimer=105;
+    nextBoss+=500;
+    sfxBossWarning(); shake(6); flash('255,80,80',.16);
+    comic('⚠️ ДЕДЛАЙН БЛИЗКО!',W*.50,H*.25,43,76);
+    updateV2Hud();
+  }
+  if (bossWarningTimer>0) {
+    bossWarningTimer=Math.max(0,bossWarningTimer-dt);
+    if (bossWarningTimer===0) spawnDeadline();
+  }
+
   spawnTimer -= dt;
-  if (spawnTimer<=0) {
+  if (spawnTimer<=0 && !bossActive && bossWarningTimer<=0) {
     spawnObstacle();
     spawnTimer = Math.max(54, 112 - speed*2.2) + Math.random()*58;
   }
@@ -1195,10 +1342,17 @@ function update(dt) {
   }
   obstacles = obstacles.filter(o => o.x+o.w > -60 && (o.fade===undefined || o.fade>0));
 
+  for (const b of bonuses) {
+    b.x -= speed*dt; b.wobble += .07*dt;
+    if (!b.collected && collision(player,b)) collectCoffee(b);
+  }
+  bonuses=bonuses.filter(b=>!b.collected && b.x+b.w>-50);
+
   score += speed*.055*dt;
   speed = Math.min(MAX_SPEED, BASE_SPEED + score/180);
   document.getElementById('score').textContent=Math.floor(score);
   if (score >= nextMilestone) { milestoneFx(nextMilestone); nextMilestone += 100; }
+  updateV2Hud();
 
   for (const o of obstacles) {
     if (!o.reacted && collision(player,o)) { handleObstacleHit(o); break; }
@@ -1209,6 +1363,7 @@ function draw() {
   ctx.save();
   if (screenShake>0) ctx.translate((Math.random()-.5)*screenShake,(Math.random()-.5)*screenShake);
   drawBackground();
+  bonuses.forEach(b=>drawCoffee(b));
   obstacles.forEach(o=>{
     ctx.save();
     if (o.fade!==undefined) ctx.globalAlpha=Math.max(0,o.fade);
@@ -1249,6 +1404,10 @@ document.addEventListener('visibilitychange',()=>{ appActive=!document.hidden; l
 
 function start() {
   ensureAudio();
+  const panel=document.getElementById('startPanel');
+  panel.querySelector('h1').textContent='TEQUILA RUN';
+  panel.querySelector('p').textContent='Перепрыгивай препятствия, собирай кофе и держи комбо. Каждые 500 м прилетает ДЕДЛАЙН. После пятого столкновения — Галя отмена!';
+  document.getElementById('startBtn').textContent='Старт';
   try { if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('8.0') && !tg.isFullscreen) tg.requestFullscreen(); } catch (_) {}
   try { if (tg) tg.expand(); } catch (_) {}
   syncViewportHeight();
@@ -1279,7 +1438,7 @@ window.addEventListener('keydown',e=>{
 });
 
 // Expose a tiny diagnostic object for Telegram/WebView testing.
-window.TequilaRunEnv={telegram:!!tg, telegramVersion:tg?tg.version:null, platform:tg?tg.platform:null, iOSWebKit:isIOSWebKit, telegramUA:isTelegramUA, requiresPublicHttpsForTelegram:true};
+window.TequilaRunEnv={version:'2.0',telegram:!!tg, telegramVersion:tg?tg.version:null, platform:tg?tg.platform:null, iOSWebKit:isIOSWebKit, telegramUA:isTelegramUA, requiresPublicHttpsForTelegram:true};
 </script>
 </body>
 </html>
