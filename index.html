@@ -87,7 +87,7 @@
     padding:6px 10px; border-radius:12px; background:rgba(17,24,39,.52);
     /* Avoid backdrop-filter: expensive in iOS/WKWebView while canvas animates. */
   }
-  .hud > div:nth-child(3) { font-size:clamp(11px,3.2vw,15px); white-space:nowrap; }
+  .hud > div:nth-child(3), .hud > div:nth-child(4) { font-size:clamp(11px,3.2vw,15px); white-space:nowrap; }
   .panel {
     position:absolute; inset:0; z-index:6; display:grid; place-items:center; background:rgba(0,0,0,.34);
     /* Solid translucent layer is smoother than backdrop-filter in WKWebView. */
@@ -139,11 +139,12 @@
       <div>🏃 Tequila Run</div>
       <div><span id="score">0</span> м · рекорд <span id="best">0</span> · 💥 <span id="hits">0</span>/5</div>
       <div>🔥 комбо <span id="combo">×1</span> · ☕ <span id="coffeeState">ищем кофе</span> · 📕 босс <span id="bossState">500 м</span></div>
+      <div>⚡ суперсила <span id="powerState">ищем бонус</span></div>
     </div>
     <div id="startPanel" class="panel">
       <div class="card">
         <h1>TEQUILA RUN</h1>
-        <p>Перепрыгивай препятствия, собирай кофе и держи комбо. Каждые 500 м прилетает ДЕДЛАЙН. После пятого столкновения — Галя отмена!</p>
+        <p>Перепрыгивай препятствия, собирай кофе и суперсилы, держи комбо. Каждые 500 м прилетает ДЕДЛАЙН. После пятого столкновения — Галя отмена!</p>
         <button id="startBtn">Старт</button>
         <div class="small">На смартфоне: нажми «ПРЫЖОК» или коснись игрового поля</div>
       </div>
@@ -339,6 +340,29 @@ function sfxDeadlineHit(){
   setTimeout(()=>tone(180,.12,'square',.04,95),120);
 }
 
+function sfxPowerup(type){
+  if (type==='turbo') {
+    [440,660,880,1175].forEach((f,i)=>setTimeout(()=>tone(f,.10,'sawtooth',.04,f*1.12),i*55));
+    setTimeout(()=>noise(.18,.035,5000),85);
+  } else if (type==='director') {
+    tone(180,.11,'square',.055,240);
+    setTimeout(()=>tone(330,.12,'square',.05,440),80);
+    setTimeout(()=>tone(660,.20,'triangle',.045,825),165);
+  } else {
+    tone(520,.10,'sine',.04,780);
+    setTimeout(()=>tone(780,.14,'triangle',.04,1040),80);
+    setTimeout(()=>noise(.24,.022,4200),130);
+  }
+}
+function sfxPowerEnd(type){
+  if (type==='remote') {
+    tone(620,.12,'triangle',.025,420);
+    setTimeout(()=>tone(420,.16,'triangle',.025,280),80);
+  } else {
+    tone(520,.10,'triangle',.025,360);
+  }
+}
+
 function speakFunny(text) {
   if (!soundOn || !('speechSynthesis' in window)) return;
   try {
@@ -359,8 +383,11 @@ let drunkTimer=0, gasTimer=0, stickTimer=0, hitCooldown=0;
 let hits=0, fatalTimer=0, fatalHit=null, dead=false, deathAge=0;
 let combo=0, nextCoffee=230, coffeeCooldown=0;
 let nextBoss=500, bossWarningTimer=0, bossActive=false;
+let nextPower=380, powerCooldown=0, lastPowerType='';
+let turboTimer=0, directorTimer=0, remoteTimer=0;
 const MAX_HITS=5;
 const DRUNK_DURATION=155, GAS_DURATION=145, STICK_DURATION=48;
+const TURBO_DURATION=240, DIRECTOR_DURATION=240, REMOTE_DURATION=300;
 let domDrunk=false, domGas=false;
 function syncDomFx(){
   const d=drunkTimer>0, g=gasTimer>0;
@@ -490,12 +517,19 @@ function updateV2Hud(){
   const c=document.getElementById('combo');
   const coffee=document.getElementById('coffeeState');
   const boss=document.getElementById('bossState');
+  const power=document.getElementById('powerState');
   if (c) c.textContent='×'+comboMultiplier();
   if (coffee) coffee.textContent=hits>0?'может спасти':'бонус +40 м';
   if (boss) {
     if (bossActive) boss.textContent='СЕЙЧАС!';
     else if (bossWarningTimer>0) boss.textContent='⚠️';
     else boss.textContent=Math.max(0,Math.ceil(nextBoss-score))+' м';
+  }
+  if (power) {
+    if (remoteTimer>0) power.textContent='🏖 УДАЛЁНКА '+Math.ceil(remoteTimer/60)+'с';
+    else if (directorTimer>0) power.textContent='👔 ДИРЕКТОР '+Math.ceil(directorTimer/60)+'с';
+    else if (turboTimer>0) power.textContent='☕ TURBO '+Math.ceil(turboTimer/60)+'с';
+    else power.textContent='через '+Math.max(0,Math.ceil(nextPower-score))+' м';
   }
 }
 function resetCombo(show=false){
@@ -507,8 +541,59 @@ function addCombo(amount=1){
   if (combo>=2) comic('КОМБО ×'+comboMultiplier(),W*.72,H*.18,26+combo*2,34);
 }
 
+function directorDeflect(o){
+  o.passed=true;
+  if (o.type==='rider') { o.reacted=true; o.hitAge=0; o.knockback=1; }
+  else { o.reacted=true; o.fade=1; o.spin=.14; }
+  if (o.type==='deadline') {
+    bossActive=false;
+    score+=80;
+    combo=Math.min(5,combo+2);
+    sfxDeadlineWin();
+    comic('СОГЛАСОВАНО!',W*.50,H*.27,54,62);
+    comic('+80 М · БЕЗ СТОЛКНОВЕНИЯ',W*.50,H*.34,24,54);
+    burst(o.x+o.w*.5,o.y+o.h*.4,'✅',10,6);
+  } else {
+    addCombo(1);
+    score+=10*comboMultiplier();
+    sfxStickWhack();
+    comic(['УТВЕРЖДАЮ!','СОГЛАСОВАНО!','НЕ КО МНЕ!'][(Math.random()*3)|0],W*.52,H*.28,42,48);
+    burst(o.x+o.w*.5,o.y+o.h*.45,'📎',6,5);
+  }
+  flash('255,225,95',.20); shake(7); telegramHaptic('light'); updateV2Hud();
+}
+
+function activatePower(type){
+  turboTimer=0; directorTimer=0; remoteTimer=0;
+  if (type==='turbo') {
+    turboTimer=TURBO_DURATION;
+    combo=Math.max(combo,2);
+    comic('☕ TURBO COFFEE!',W*.50,H*.27,54,66);
+    comic('СКОРОСТЬ + ОЧКИ ×1.7',W*.50,H*.34,25,54);
+    burst(player.x+75,player.y+65,'⚡',10,6);
+    flash('255,190,55',.25);
+  } else if (type==='director') {
+    directorTimer=DIRECTOR_DURATION;
+    comic('👔 РЕЖИМ ДИРЕКТОРА!',W*.50,H*.27,50,66);
+    comic('ПРЕПЯТСТВИЯ СОГЛАСУЮТСЯ',W*.50,H*.34,23,54);
+    burst(player.x+70,player.y+55,'✨',9,5);
+    flash('255,225,95',.22);
+  } else {
+    remoteTimer=REMOTE_DURATION;
+    obstacles=[]; bonuses=[];
+    bossActive=false; bossWarningTimer=0;
+    comic('🏖 УДАЛЁНКА!',W*.50,H*.27,58,72);
+    comic('5 СЕКУНД БЕЗ ОФИСА',W*.50,H*.34,25,58);
+    burst(W*.50,H*.38,'🌴',8,6);
+    flash('90,205,255',.24);
+  }
+  sfxPowerup(type); telegramHaptic('medium'); updateV2Hud();
+}
+
 function handleObstacleHit(o){
   if (!running || hitCooldown>0 || o.reacted || fatalTimer>0) return;
+  if (remoteTimer>0) { o.passed=true; o.reacted=true; o.fade=1; return; }
+  if (directorTimer>0) { directorDeflect(o); return; }
   o.passed=true;
   resetCombo(true);
   hits=Math.min(MAX_HITS,hits+1);
@@ -539,6 +624,13 @@ function updateFx(dt){
   gasTimer=Math.max(0,gasTimer-dt);
   stickTimer=Math.max(0,stickTimer-dt);
   hitCooldown=Math.max(0,hitCooldown-dt);
+  const turboWas=turboTimer>0, directorWas=directorTimer>0, remoteWas=remoteTimer>0;
+  turboTimer=Math.max(0,turboTimer-dt);
+  directorTimer=Math.max(0,directorTimer-dt);
+  remoteTimer=Math.max(0,remoteTimer-dt);
+  if (turboWas && turboTimer===0) { sfxPowerEnd('turbo'); comic('TURBO ЗАКОНЧИЛСЯ',W*.5,H*.22,27,38); }
+  if (directorWas && directorTimer===0) { sfxPowerEnd('director'); comic('ДИРЕКТОР ВЫШЕЛ',W*.5,H*.22,27,38); }
+  if (remoteWas && remoteTimer===0) { sfxPowerEnd('remote'); comic('ОБРАТНО В ОФИС!',W*.5,H*.22,31,44); flash('255,255,255',.12); }
   if (dead) deathAge += dt;
   if (fatalTimer>0) {
     fatalTimer=Math.max(0,fatalTimer-dt);
@@ -586,15 +678,18 @@ const player = {
 
 let obstacles = [];
 let bonuses = [];
+let powerups = [];
 let dust = [];
 
 function reset() {
-  score = 0; speed = BASE_SPEED; spawnTimer = 68; obstacles = []; bonuses = []; dust = [];
+  score = 0; speed = BASE_SPEED; spawnTimer = 68; obstacles = []; bonuses = []; powerups = []; dust = [];
   fxParticles=[]; fxTexts=[]; screenShake=0; screenFlash=0; nextMilestone=100;
   drunkTimer=0; gasTimer=0; stickTimer=0; hitCooldown=0;
   hits=0; fatalTimer=0; fatalHit=null; dead=false; deathAge=0;
   combo=0; nextCoffee=210+Math.random()*90; coffeeCooldown=0;
   nextBoss=500; bossWarningTimer=0; bossActive=false;
+  nextPower=330+Math.random()*180; powerCooldown=0; lastPowerType='';
+  turboTimer=0; directorTimer=0; remoteTimer=0;
   shell.classList.remove('is-drunk','is-gassed'); domDrunk=false; domGas=false;
   player.y = groundY-player.h; player.vy = 0; player.onGround = true;
   document.getElementById('score').textContent = '0';
@@ -652,6 +747,38 @@ function collectCoffee(b){
   }
   telegramHaptic('light');
   updateV2Hud();
+}
+
+
+function spawnPowerup(){
+  const types=['turbo','director','remote'].filter(t=>t!==lastPowerType);
+  const type=types[(Math.random()*types.length)|0];
+  lastPowerType=type;
+  powerups.push({type,x:W+42,y:groundY-152,w:66,h:66,wobble:Math.random()*Math.PI*2});
+  nextPower=score+430+Math.random()*280;
+  powerCooldown=120;
+}
+function collectPowerup(p){
+  p.collected=true;
+  activatePower(p.type);
+}
+function drawPowerup(p){
+  ctx.save();
+  const bob=Math.sin(p.wobble)*5;
+  const x=p.x+p.w*.5, y=p.y+p.h*.5+bob, r=p.w*.43;
+  const pulse=1+Math.sin(p.wobble*1.7)*.06;
+  ctx.translate(x,y); ctx.scale(pulse,pulse);
+  ctx.fillStyle='rgba(255,255,255,.18)';
+  ctx.beginPath(); ctx.arc(0,0,r+11,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle=p.type==='turbo'?'#f59e0b':p.type==='director'?'#facc15':'#38bdf8';
+  ctx.lineWidth=5; ctx.beginPath(); ctx.arc(0,0,r+5,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle='rgba(17,24,39,.82)'; ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill();
+  const em=p.type==='turbo'?'☕':p.type==='director'?'👔':'🏖️';
+  ctx.font=`${Math.floor(r*1.25)}px Apple Color Emoji, Segoe UI Emoji, sans-serif`;
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(em,0,-2);
+  ctx.font='900 10px Arial'; ctx.fillStyle='#fff';
+  ctx.fillText(p.type==='turbo'?'TURBO':p.type==='director'?'BOSS MODE':'REMOTE',0,r+20);
+  ctx.restore();
 }
 
 function bottle(o) {
@@ -950,6 +1077,17 @@ function drawPlayer() {
   const x=player.x, y=player.y;
   const now=performance.now();
   ctx.save();
+  if (turboTimer>0) {
+    ctx.fillStyle='rgba(255,145,35,.55)';
+    for(let i=0;i<4;i++){
+      const yy=y+38+i*22, len=25+i*10+Math.sin(performance.now()/80+i)*6;
+      ctx.beginPath(); ctx.moveTo(x-8,yy); ctx.lineTo(x-8-len,yy-7); ctx.lineTo(x-8-len*.65,yy+8); ctx.closePath(); ctx.fill();
+    }
+  }
+  if (directorTimer>0) {
+    ctx.strokeStyle='rgba(250,204,21,.72)'; ctx.lineWidth=6;
+    ctx.beginPath(); ctx.ellipse(x+36,y+66,58,82,0,0,Math.PI*2); ctx.stroke();
+  }
   if (dead) {
     const p=Math.min(1,deathAge/42);
     const cx=x+player.w*.5, cy=y+player.h*.72;
@@ -1099,12 +1237,66 @@ function drawPlayer() {
   ctx.strokeStyle='rgba(255,255,255,.95)';
   ctx.lineWidth=3;
   ctx.beginPath(); ctx.arc(x+36,y+29,36,0,Math.PI*2); ctx.stroke();
+  if (remoteTimer>0) {
+    ctx.fillStyle='#111827';
+    ctx.fillRect(x+12,y+18,20,11); ctx.fillRect(x+40,y+18,20,11); ctx.fillRect(x+31,y+21,10,4);
+    ctx.strokeStyle='#111827'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(x+12,y+20); ctx.lineTo(x+4,y+17); ctx.stroke();
+  }
+  if (directorTimer>0) {
+    ctx.fillStyle='#991b1b';
+    ctx.beginPath(); ctx.moveTo(x+34,y+58); ctx.lineTo(x+42,y+58); ctx.lineTo(x+40,y+86); ctx.lineTo(x+35,y+94); ctx.lineTo(x+31,y+85); ctx.closePath(); ctx.fill();
+  }
 
   ctx.restore();
   ctx.restore();
 }
 
+function drawRemoteBackground(){
+  const horizon=Math.round(groundY*.57);
+  ctx.save();
+  const sky=ctx.createLinearGradient(0,0,0,horizon);
+  sky.addColorStop(0,'#63c5f4'); sky.addColorStop(1,'#d8f4ff');
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,horizon);
+  ctx.fillStyle='#ffe36e'; ctx.beginPath(); ctx.arc(W*.78,H*.16,55,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.88)';
+  [[.16,.16],[.48,.23],[.76,.30]].forEach(([xx,yy],i)=>{
+    const x=W*xx,y=H*yy;
+    ctx.beginPath(); ctx.ellipse(x,y,52,18,0,0,Math.PI*2);
+    ctx.ellipse(x+42,y+2,38,15,0,0,Math.PI*2);
+    ctx.ellipse(x-38,y+5,31,13,0,0,Math.PI*2); ctx.fill();
+  });
+  const sea=ctx.createLinearGradient(0,horizon,0,groundY-75);
+  sea.addColorStop(0,'#27a7d7'); sea.addColorStop(1,'#0d7ca9');
+  ctx.fillStyle=sea; ctx.fillRect(0,horizon,W,groundY-75-horizon);
+  ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.lineWidth=3;
+  const drift=(performance.now()*.04)%90;
+  for(let y=horizon+35;y<groundY-95;y+=48){
+    for(let x=-drift;x<W;x+=120){ ctx.beginPath(); ctx.moveTo(x,y); ctx.quadraticCurveTo(x+24,y-5,x+48,y); ctx.stroke(); }
+  }
+  const sand=ctx.createLinearGradient(0,groundY-75,0,H);
+  sand.addColorStop(0,'#f4d38a'); sand.addColorStop(1,'#d9aa60');
+  ctx.fillStyle=sand; ctx.fillRect(0,groundY-75,W,H-groundY+75);
+  ctx.fillStyle='rgba(255,255,255,.55)'; ctx.fillRect(0,groundY-82,W,8);
+  // palm
+  ctx.strokeStyle='#76502e'; ctx.lineWidth=16; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(W*.86,groundY-78); ctx.quadraticCurveTo(W*.82,H*.42,W*.88,H*.29); ctx.stroke();
+  ctx.strokeStyle='#237a47'; ctx.lineWidth=13;
+  for(let a=-2.7;a<.3;a+=.55){
+    ctx.beginPath(); ctx.moveTo(W*.88,H*.29); ctx.lineTo(W*.88+Math.cos(a)*105,H*.29+Math.sin(a)*70); ctx.stroke();
+  }
+  // Crockid beach flag
+  ctx.strokeStyle='#5f6368'; ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(70,groundY-65); ctx.lineTo(70,groundY-265); ctx.stroke();
+  ctx.fillStyle='#fff'; ctx.fillRect(72,groundY-255,170,68);
+  ctx.fillStyle='#d94742'; ctx.font='900 25px Arial'; ctx.textAlign='center'; ctx.fillText('CROCKID',157,groundY-212);
+  // moving beach track
+  ctx.fillStyle='rgba(255,255,255,.30)';
+  const off=(performance.now()*speed*.11)%130;
+  for(let x=-off;x<W;x+=130) ctx.fillRect(x,groundY+48,42,5);
+  ctx.restore();
+}
+
 function drawBackground() {
+  if (remoteTimer>0) { drawRemoteBackground(); return; }
   const BH = 1280, G = 1025;
   const sy = H / BH;
   ctx.save();
@@ -1303,9 +1495,11 @@ function update(dt) {
   }
 
   coffeeCooldown=Math.max(0,coffeeCooldown-dt);
-  if (score>=nextCoffee && coffeeCooldown<=0 && bonuses.length===0 && !bossActive && bossWarningTimer<=0) spawnCoffee();
+  powerCooldown=Math.max(0,powerCooldown-dt);
+  if (remoteTimer<=0 && score>=nextCoffee && coffeeCooldown<=0 && bonuses.length===0 && !bossActive && bossWarningTimer<=0) spawnCoffee();
+  if (remoteTimer<=0 && score>=nextPower && powerCooldown<=0 && powerups.length===0 && !bossActive && bossWarningTimer<=0) spawnPowerup();
 
-  if (score>=nextBoss && !bossActive && bossWarningTimer<=0) {
+  if (remoteTimer<=0 && score>=nextBoss && !bossActive && bossWarningTimer<=0) {
     bossWarningTimer=105;
     nextBoss+=500;
     sfxBossWarning(); shake(6); flash('255,80,80',.16);
@@ -1314,17 +1508,18 @@ function update(dt) {
   }
   if (bossWarningTimer>0) {
     bossWarningTimer=Math.max(0,bossWarningTimer-dt);
-    if (bossWarningTimer===0) spawnDeadline();
+    if (bossWarningTimer===0 && remoteTimer<=0) spawnDeadline();
   }
 
   spawnTimer -= dt;
-  if (spawnTimer<=0 && !bossActive && bossWarningTimer<=0) {
+  if (remoteTimer<=0 && spawnTimer<=0 && !bossActive && bossWarningTimer<=0) {
     spawnObstacle();
     spawnTimer = Math.max(54, 112 - speed*2.2) + Math.random()*58;
   }
 
+  const runSpeed=speed*(turboTimer>0?1.15:1)*(remoteTimer>0?1.08:1);
   for (const o of obstacles) {
-    o.x -= speed*dt;
+    o.x -= runSpeed*dt;
     o.wobble += .06*dt;
     if (o.reacted) {
       if (o.type==='rider') {
@@ -1343,12 +1538,18 @@ function update(dt) {
   obstacles = obstacles.filter(o => o.x+o.w > -60 && (o.fade===undefined || o.fade>0));
 
   for (const b of bonuses) {
-    b.x -= speed*dt; b.wobble += .07*dt;
+    b.x -= runSpeed*dt; b.wobble += .07*dt;
     if (!b.collected && collision(player,b)) collectCoffee(b);
   }
   bonuses=bonuses.filter(b=>!b.collected && b.x+b.w>-50);
 
-  score += speed*.055*dt;
+  for (const p of powerups) {
+    p.x -= runSpeed*dt; p.wobble += .065*dt;
+    if (!p.collected && collision(player,p)) collectPowerup(p);
+  }
+  powerups=powerups.filter(p=>!p.collected && p.x+p.w>-60);
+
+  score += runSpeed*.055*dt*(turboTimer>0?1.7:1);
   speed = Math.min(MAX_SPEED, BASE_SPEED + score/180);
   document.getElementById('score').textContent=Math.floor(score);
   if (score >= nextMilestone) { milestoneFx(nextMilestone); nextMilestone += 100; }
@@ -1364,6 +1565,7 @@ function draw() {
   if (screenShake>0) ctx.translate((Math.random()-.5)*screenShake,(Math.random()-.5)*screenShake);
   drawBackground();
   bonuses.forEach(b=>drawCoffee(b));
+  powerups.forEach(p=>drawPowerup(p));
   obstacles.forEach(o=>{
     ctx.save();
     if (o.fade!==undefined) ctx.globalAlpha=Math.max(0,o.fade);
@@ -1377,9 +1579,9 @@ function draw() {
   drawPlayer();
 
   // speed vignette lines
-  if (running && speed>11) {
+  if (running && (speed>11 || turboTimer>0)) {
     ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=3;
-    for(let i=0;i<10;i++) {
+    for(let i=0;i<(turboTimer>0?16:10);i++) {
       const yy=265+i*62, len=35+(i%3)*26;
       ctx.beginPath(); ctx.moveTo(W-len-(i*71)%W,yy); ctx.lineTo(W-(i*71)%W,yy); ctx.stroke();
     }
@@ -1406,7 +1608,7 @@ function start() {
   ensureAudio();
   const panel=document.getElementById('startPanel');
   panel.querySelector('h1').textContent='TEQUILA RUN';
-  panel.querySelector('p').textContent='Перепрыгивай препятствия, собирай кофе и держи комбо. Каждые 500 м прилетает ДЕДЛАЙН. После пятого столкновения — Галя отмена!';
+  panel.querySelector('p').textContent='Перепрыгивай препятствия, собирай кофе и суперсилы, держи комбо. Каждые 500 м прилетает ДЕДЛАЙН. После пятого столкновения — Галя отмена!';
   document.getElementById('startBtn').textContent='Старт';
   try { if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('8.0') && !tg.isFullscreen) tg.requestFullscreen(); } catch (_) {}
   try { if (tg) tg.expand(); } catch (_) {}
@@ -1438,7 +1640,7 @@ window.addEventListener('keydown',e=>{
 });
 
 // Expose a tiny diagnostic object for Telegram/WebView testing.
-window.TequilaRunEnv={version:'2.0',telegram:!!tg, telegramVersion:tg?tg.version:null, platform:tg?tg.platform:null, iOSWebKit:isIOSWebKit, telegramUA:isTelegramUA, requiresPublicHttpsForTelegram:true};
+window.TequilaRunEnv={version:'3.0',telegram:!!tg, telegramVersion:tg?tg.version:null, platform:tg?tg.platform:null, iOSWebKit:isIOSWebKit, telegramUA:isTelegramUA, requiresPublicHttpsForTelegram:true};
 </script>
 </body>
 </html>
