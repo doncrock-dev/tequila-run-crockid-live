@@ -1,12 +1,24 @@
 # Tequila Run Crockid
 
-Mobile portrait HTML5 game optimized for Telegram WebApp / WKWebView.
+Production: **Tequila Run 5.7.3**
 
-Features:
-- portrait smartphone layout
-- Telegram WebApp compatibility
-- visual/audio reactions for tequila, rider and pepper spray
-- 5 collisions -> game over with “Галя отмена!”
-- self-contained single-page game
+Корпоративная HTML5-игра Crockid для мобильного браузера / Telegram WebApp.
 
-Deploy: import this repository into Vercel as a static site.
+## Production files
+
+- `index.html` — self-contained game
+- `api/leaderboard.js` — GET/POST online leaderboard
+- `package.json` — `@vercel/functions` dependency
+- `vercel.json` — Vercel configuration
+
+## Online leaderboard
+
+Клиент обращается к `/api/leaderboard`.
+
+- `GET /api/leaderboard` возвращает общий рейтинг и недельный пробег.
+- `POST /api/leaderboard` принимает результат забега.
+- Хранилище: Vercel Runtime Cache.
+- Лучший результат по имени хранится отдельно для каждого отдела.
+- Поддерживаемые режимы: `endless`, `story`.
+
+До этого production endpoint `/api/leaderboard` возвращал 404, потому что serverless-файл отсутствовал в репозитории.
