@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover,interactive-widget=resizes-content" />
-<title>Tequila Run 2.0 — Crockid</title>
+<title>Tequila Run 2.2 — Visual Mayhem</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   * { box-sizing: border-box; }
@@ -113,6 +113,18 @@
     color:#fff; font-weight:900; font-size:13px; text-align:center; pointer-events:none; opacity:0;
     transition:opacity .16s ease; box-shadow:0 8px 25px rgba(0,0,0,.28); }
   #v2Toast.show { opacity:1; }
+  #hrPoll {
+    position:absolute; z-index:9; left:50%; top:48%; transform:translate(-50%,-50%);
+    display:none; width:min(330px,82%); padding:16px 18px; border-radius:20px;
+    background:rgba(17,24,39,.94); color:white; text-align:center; box-shadow:0 18px 50px #0008;
+  }
+  #hrPoll .question { font-weight:900; font-size:18px; margin-bottom:10px; }
+  #hrPoll button { width:100%; padding:12px; font-size:17px; }
+  #typingBubble {
+    position:absolute; z-index:5; top:27%; left:50%; transform:translateX(-50%);
+    display:none; background:#fff; color:#111827; border-radius:18px; padding:9px 15px;
+    font-weight:900; font-size:14px; box-shadow:0 6px 18px #0005; pointer-events:none;
+  }
   #mobileJump {
     position:absolute; z-index:4;
     left:max(16px, env(safe-area-inset-left)); right:max(16px, env(safe-area-inset-right)); bottom:max(16px, env(safe-area-inset-bottom), var(--safe-bottom));
@@ -146,7 +158,7 @@
     <div id="drunkFx" class="screenFx" aria-hidden="true"></div>
     <div id="gasFx" class="screenFx" aria-hidden="true"></div>
     <div class="hud">
-      <div>🏃 Tequila Run 2.0 · Crockid</div>
+      <div>🏃 Tequila Run 2.2 · Visual Mayhem</div>
       <div><span id="score">0</span> м · рекорд <span id="best">0</span> · 💥 <span id="hits">0</span>/5</div>
       <div>🔥 комбо <span id="combo">×1</span> · ☕ <span id="coffeeState">ищем кофе</span> · 📕 босс <span id="bossState">500 м</span></div>
       <div>⚡ суперсила <span id="powerState">ищем бонус</span></div>
@@ -169,6 +181,8 @@
       </div>
     </div>
     <div id="v2Toast"></div>
+    <div id="typingBubble">Галя печатает… ● ● ●</div>
+    <div id="hrPoll"><div class="question">HR: Как ваше настроение?</div><button id="hrLike">👍 Всё прекрасно</button></div>
     <button id="soundBtn" aria-label="Звук включён" title="Включить/выключить звук">🔊</button>
   </div>
 </div>
@@ -484,7 +498,9 @@ function drawArtifact(a){ctx.save();const b=Math.sin(a.wobble)*6,cx=a.x+a.w/2,cy
 function collectArtifact(a){a.collected=true;artifactTotal++;artifactInventory[a.type]=(artifactInventory[a.type]||0)+1;score+=15;updateNerve(-4);comic(a.emoji+' '+a.label+'!',W*.54,H*.32,31,46);burst(a.x+a.w/2,a.y+a.h/2,'✨',6,4);if(artifactTotal===1)unlockAchievement('artifact1','Первый корпоративный артефакт');if(artifactInventory[a.type]%3===0){score+=80;updateNerve(-18);comic('КОМПЛЕКТ ×3! +80 М',W*.52,H*.25,36,62);unlockAchievement('artifact3','Складской коллекционер');}updateV2ExtraHud();}
 function spawnSecret(){const s=secretTypes[(Math.random()*secretTypes.length)|0];secrets.push({...s,x:W+55,y:groundY-145-Math.random()*35,w:72,h:92,wobble:Math.random()*6.28,collected:false});nextSecret=score+430+Math.random()*520;}
 function drawSecret(s){ctx.save();const b=Math.sin(s.wobble)*3;ctx.font='54px Apple Color Emoji,Segoe UI Emoji,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(s.emoji,s.x+s.w/2,s.y+s.h/2+b);ctx.font='900 11px Arial';ctx.fillStyle='#fff';ctx.strokeStyle='rgba(17,24,39,.85)';ctx.lineWidth=4;ctx.strokeText(s.label,s.x+s.w/2,s.y-5+b);ctx.fillText(s.label,s.x+s.w/2,s.y-5+b);ctx.restore();}
-function collectSecret(s){s.collected=true;score+=35;updateNerve(-8);comic('СЕКРЕТ! +35 М',W*.54,H*.28,35,55);speakFunny(s.line);unlockAchievement('secret','Секретный сотрудник');}
+function collectSecret(s){s.collected=true;score+=35;updateNerve(-8);
+ if(s.newbie){unlockAchievement('newbie','Помог новичку найти столовую');score+=25;}
+ if(s.cakeQuest){unlockAchievement('cake','Нашёл пропавший торт');score+=50;}comic('СЕКРЕТ! +35 М',W*.54,H*.28,35,55);speakFunny(s.line);unlockAchievement('secret','Секретный сотрудник');}
 
 function startCorporateEvent(type=null,isMini=false){
  const pool=['oneC','call','cake','delivery','meeting'];type=type||pool[(Math.random()*pool.length)|0];
@@ -496,6 +512,7 @@ function startCorporateEvent(type=null,isMini=false){
  comic(data.title,W*.5,H*.22,isMini?46:38,80);comic(data.sub,W*.5,H*.29,24,68);
  if(type==='cake'){score+=50;updateNerve(-15);burst(W*.55,H*.38,'🍰',9,6);}
  if(type==='meeting')obstacles=[];
+ if(type==='delivery'||type==='friday')deliveryRainTimer=260;
  if(isMini){updateNerve(10);sfxBossWarning();shake(8);}
 }
 function finishCorporateEvent(){if(!corporateEvent)return;if(corporateEvent.isMini){if(hits===eventStartHits){score+=100;addCombo(2);comic('МИНИ-БОСС ПРОЙДЕН! +100 М',W*.5,H*.27,34,68);unlockAchievement('miniboss','Пережил корпоративный мини-босс');}else comic('МИНИ-БОСС ОСТАВИЛ СЛЕД',W*.5,H*.27,29,50);}corporateEvent=null;miniBossActive=false;}
@@ -515,6 +532,412 @@ function updateV2Systems(dt){
  if(score>=100)unlockAchievement('100m','Первые 100 метров');
  updateV2ExtraHud();
 }
+
+
+// -------- Corporate Chaos Pack: meme events --------
+let nextMemeEvent=360,memeEvent=null,memeTimer=0,memeCooldown=0;
+let obstacleSilenceTimer=0;
+let shieldCharges=0,passwordTimer=0,darkTimer=0,vacationTimer=0,vacationReturnPending=false;
+let partyTimer=0,galyaOnlineTimer=0,approvalTimer=0,inventoryTimer=0,retailTiltTimer=0;
+let logisticsRushTimer=0,cheapObstaclesTimer=0,promoTimer=0,coffeeOutTimer=0,unreadTimer=0;
+let typingTimer=0,typingOutcomePending=false,hrPollTimer=0;
+let finalFiles=[],finalFileActive=false,memeObjects=[];
+let approvalPhase=0;
+
+const chatMessages=['Срочно','Коллеги?','Апдейт?','+','Принято','Кто в курсе?','Доброе утро!','Напомню','Есть новости?','Очень срочно'];
+const memeEventPool=['chat','meeting15','notMy','approval','oneCLives','galyaTyping','friday1759',
+ 'vacation','newbie','intern','dark','inventory','party','galyaOnline','warehouseNo',
+ 'marketingSale','buyingCheaper','logisticsRoad','designFinal','retailEdit','hr','memo','password','coffeeOut','cakeQuest'];
+
+function setTyping(show){const e=document.getElementById('typingBubble');if(e)e.style.display=show?'block':'none';}
+function setHrPoll(show){const e=document.getElementById('hrPoll');if(e)e.style.display=show?'block':'none';}
+
+function spawnMemeObject(type,emoji,label,x=W+60,y=groundY-120,w=72,h=90){
+  memeObjects.push({type,emoji,label,x,y,w,h,wobble:Math.random()*6.28,passed:false,reacted:false});
+}
+function drawMemeObject(o){
+  ctx.save();const bob=Math.sin(o.wobble)*3;
+  ctx.font=`${Math.floor(o.h*.60)}px Apple Color Emoji,Segoe UI Emoji,sans-serif`;
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(o.emoji,o.x+o.w/2,o.y+o.h/2+bob);
+  ctx.font='900 12px Arial';ctx.lineWidth=4;ctx.strokeStyle='rgba(17,24,39,.9)';ctx.fillStyle='#fff';
+  ctx.strokeText(o.label,o.x+o.w/2,o.y-6+bob);ctx.fillText(o.label,o.x+o.w/2,o.y-6+bob);ctx.restore();
+}
+function memeObjectHit(o){
+  if(o.reacted)return;o.reacted=true;updateNerve(15);resetCombo(true);shake(8);flash('255,105,80',.25);
+  if(o.type==='memo')speakFunny('Служебка. На подпись.');
+  else if(o.type==='box')speakFunny('Склад сказал нет.');
+  else if(o.type==='finalWrong')speakFunny('Нет. Это не финал.');
+  comic('ОЙ!',W*.52,H*.30,42,48);
+}
+function spawnFinalFiles(){
+  finalFiles=[];
+  const real=(Math.random()*5)|0;
+  for(let i=0;i<5;i++) finalFiles.push({
+    type:i===real?'real':'wrong',x:W+55+i*86,y:groundY-195-(i%2)*45,w:62,h:72,
+    label:i===real?'FINAL_REAL':'final_v'+(7+i),collected:false,wobble:Math.random()*6.28
+  });
+  finalFileActive=true;
+}
+function drawFinalFile(f){
+  ctx.save();const b=Math.sin(f.wobble)*4;ctx.fillStyle=f.type==='real'?'#22c55e':'#64748b';
+  ctx.beginPath();ctx.roundRect(f.x,f.y+b,f.w,f.h,9);ctx.fill();ctx.fillStyle='#fff';ctx.font='900 11px Arial';
+  ctx.textAlign='center';ctx.fillText('📄',f.x+f.w/2,f.y+25+b);ctx.fillText(f.label,f.x+f.w/2,f.y+50+b);ctx.restore();
+}
+function collectFinalFile(f){
+  f.collected=true;
+  if(f.type==='real'){score+=100;updateNerve(-20);comic('FINAL_REAL! +100 М',W*.5,H*.27,38,62);unlockAchievement('finalReal','Нашёл настоящий финал');finalFiles.forEach(x=>x.collected=true);}
+  else{updateNerve(8);comic('НЕ ТОТ FINAL!',W*.5,H*.29,30,42);}
+}
+function triggerMemeEvent(type=null){
+  if(memeTimer>0||remoteTimer>0)return;
+  type=type||memeEventPool[(Math.random()*memeEventPool.length)|0];
+  memeEvent=type;memeTimer=180;
+  switch(type){
+    case 'chat':
+      memeTimer=170;
+      chatMessages.forEach((t,i)=>setTimeout(()=>{
+        comic(t,80+Math.random()*(W-160),H*(.20+Math.random()*.48),22+Math.random()*10,55);
+        if(i%3===0)memeObjects.push({type:'chat',emoji:'💬',label:t,x:W+40+i*22,y:H*(.28+Math.random()*.38),w:58,h:58,wobble:Math.random()*6.28,passed:false,reacted:true});
+      },i*65));
+      speakFunny('Чат взорвался.');toastV2('💬 ЧАТ ВЗОРВАЛСЯ',1800);break;
+    case 'meeting15':
+      memeTimer=480;toastV2('📅 Совещание на 15 минут. Осталось 14:59',2500);speakFunny('Коллеги, буквально на пятнадцать минут.');break;
+    case 'notMy':
+      shieldCharges++;memeTimer=80;toastV2('🛡 ЭТО НЕ МОЙ ВОПРОС · щит ×1',2000);speakFunny('Переадресуйте ответственному.');break;
+    case 'approval':
+      approvalTimer=300;memeTimer=300;approvalPhase=0;toastV2('📑 СОГЛАСОВАНИЕ',1800);break;
+    case 'oneCLives':
+      oneCVisualTimer=180;excelTimer=Math.max(excelTimer,180);turboTimer=Math.max(turboTimer,180);memeTimer=110;comic('💻 1С ОЖИЛА!',W*.5,H*.27,50,62);comic('ВСЕ БЫСТРО РАБОТАЕМ!',W*.5,H*.34,25,52);speakFunny('О! Работает!');break;
+    case 'galyaTyping':
+      typingTimer=150;typingOutcomePending=true;memeTimer=165;setTyping(true);break;
+    case 'friday1759':
+      memeTimer=310;startCorporateEvent('friday',true);speakFunny('Коллеги, маленькая задачка перед выходными.');break;
+    case 'vacation':
+      vacationTimer=420;memeTimer=420;vacationReturnPending=true;obstacles=[];memeObjects=[];bossActive=false;bossWarningTimer=0;obstacleSilenceTimer=0;comic('🏖 ОТПУСК СОГЛАСОВАН!',W*.5,H*.26,48,75);speakFunny('Отпуск согласован. Невероятно.');unlockAchievement('vacation','Отпуск согласован');break;
+    case 'newbie':
+      memeTimer=170;secrets.push({emoji:'🧑‍💼',label:'НОВЕНЬКИЙ',line:'А где тут столовая?',x:W+55,y:groundY-145,w:72,h:92,wobble:0,collected:false,newbie:true});toastV2('🧑‍💼 НОВЕНЬКИЙ: «А где тут столовая?»',2100);break;
+    case 'intern':
+      memeTimer=120;
+      if(Math.random()<.5){obstacles=[];bossActive=false;bossWarningTimer=0;obstacleSilenceTimer=0;comic('🧑‍🎓 СТАЖЁР ПОМОГ!',W*.5,H*.28,40,58);score+=30;}
+      else{spawnObstacle();spawnObstacle();comic('🧑‍🎓 СТАЖЁР НАЖАЛ НЕ ТУДА',W*.5,H*.28,34,58);}
+      break;
+    case 'dark':
+      darkTimer=190;memeTimer=190;toastV2('💡 КТО ВЫКЛЮЧИЛ СВЕТ?',1900);speakFunny('Кто выключил свет?');break;
+    case 'inventory':
+      inventoryTimer=260;memeTimer=260;toastV2('📋 ИНВЕНТАРИЗАЦИЯ: вешалка 12/680',2400);break;
+    case 'party':
+      partyTimer=360;discoTimer=360;memeTimer=360;toastV2('🎉 КОРПОРАТИВ · текилы стало подозрительно много',2600);speakFunny('Ну всё. Корпоратив.');break;
+    case 'galyaOnline':
+      galyaOnlineTimer=300;memeTimer=300;toastV2('🟢 ГАЛЯ ONLINE',1800);break;
+    case 'warehouseNo':
+      memeTimer=180;spawnMemeObject('box','📦','СКЛАД СКАЗАЛ НЕТ',W+40,groundY-132,92,100);break;
+    case 'marketingSale':
+      promoTimer=260;memeTimer=260;toastV2('📣 МАРКЕТИНГ ПРИДУМАЛ АКЦИЮ',2200);break;
+    case 'buyingCheaper':
+      cheapObstaclesTimer=280;cheapPixelTimer=280;memeTimer=280;toastV2('🧾 ЗАКУПКИ НАШЛИ ДЕШЕВЛЕ · всё уменьшилось',2200);break;
+    case 'logisticsRoad':
+      logisticsRushTimer=260;taskOrbitTimer=Math.max(taskOrbitTimer,120);memeTimer=260;toastV2('🚚 ЛОГИСТИКА: УЖЕ В ПУТИ',2200);break;
+    case 'designFinal':
+      memeTimer=320;spawnFinalFiles();toastV2('🎨 ДИЗАЙН: final_FINAL_v7_точнофинал',2200);break;
+    case 'retailEdit':
+      retailTiltTimer=260;memeTimer=260;toastV2('🏬 РОЗНИЦА: ещё одна маленькая правка',2200);break;
+    case 'hr':
+      hrPollTimer=300;memeTimer=300;setHrPoll(true);toastV2('💚 ОБЯЗАТЕЛЬНАЯ HR-АКТИВНОСТЬ',1800);break;
+    case 'memo':
+      memeTimer=210;spawnMemeObject('memo','📄','СЛУЖЕБКА',W+50,groundY-165,80,105);toastV2('📄 СЛУЖЕБКА ЛЕТИТ НА ПОДПИСЬ',1900);break;
+    case 'password':
+      passwordTimer=72;memeTimer=130;toastV2('🔐 ПАРОЛЬ ИСТЁК · придумайте новый, не как предыдущие 12',2600);break;
+    case 'coffeeOut':
+      coffeeOutTimer=330;emptyCupTimer=330;memeTimer=330;bonuses=[];toastV2('☕ КОФЕ ЗАКОНЧИЛСЯ',2400);speakFunny('Кофе закончился. Всё.');break;
+    case 'cakeQuest':
+      memeTimer=240;secrets.push({emoji:'🍰',label:'КТО СЪЕЛ ТОРТ?',line:'А это чей кусок?',x:W+55,y:groundY-150,w:78,h:92,wobble:0,collected:false,cakeQuest:true});break;
+  }
+}
+function updateCorporateChaos(dt){
+  if(!running)return;
+  const dec=k=>Math.max(0,k-dt);
+  memeCooldown=dec(memeCooldown);
+  if(memeTimer>0)memeTimer=dec(memeTimer);
+  darkTimer=dec(darkTimer);partyTimer=dec(partyTimer);galyaOnlineTimer=dec(galyaOnlineTimer);
+  approvalTimer=dec(approvalTimer);inventoryTimer=dec(inventoryTimer);retailTiltTimer=dec(retailTiltTimer);
+  logisticsRushTimer=dec(logisticsRushTimer);cheapObstaclesTimer=dec(cheapObstaclesTimer);promoTimer=dec(promoTimer);
+  coffeeOutTimer=dec(coffeeOutTimer);unreadTimer=dec(unreadTimer);passwordTimer=dec(passwordTimer);hrPollTimer=dec(hrPollTimer);
+  if(typingTimer>0){typingTimer=dec(typingTimer);if(typingTimer===0){setTyping(false);if(typingOutcomePending){typingOutcomePending=false;if(Math.random()<.55){updateNerve(45);comic('СООБЩЕНИЕ ОТПРАВЛЕНО 😬',W*.5,H*.28,34,55);}else toastV2('Галя передумала писать',1500);}}}
+  if(vacationTimer>0){vacationTimer=dec(vacationTimer);if(vacationTimer===0&&vacationReturnPending){vacationReturnPending=false;unreadTimer=260;updateNerve(28);comic('📨 127 НЕПРОЧИТАННЫХ',W*.5,H*.26,42,70);speakFunny('Добро пожаловать из отпуска. Сто двадцать семь непрочитанных.');}}
+  if(hrPollTimer===0)setHrPoll(false);
+  if(approvalTimer>0){approvalPhase+=.04*dt;}
+  if(score>=nextMemeEvent&&memeTimer<=0&&memeCooldown<=0&&!corporateEvent&&remoteTimer<=0){triggerMemeEvent();nextMemeEvent=score+300+Math.random()*330;memeCooldown=150;}
+  if(score>=2000&&!achievements.party2000&&partyTimer<=0){triggerMemeEvent('party');unlockAchievement('party2000','Дожил до корпоратива');}
+  for(const o of memeObjects){o.x-=speed*(logisticsRushTimer>0?1.25:1)*dt;o.wobble+=.06*dt;if(!o.reacted&&collision(player,o))memeObjectHit(o);}
+  memeObjects=memeObjects.filter(o=>o.x+o.w>-80&&!o.reacted);
+  for(const f of finalFiles){f.x-=speed*.9*dt;f.wobble+=.06*dt;if(!f.collected&&collision(player,f))collectFinalFile(f);}
+  finalFiles=finalFiles.filter(f=>!f.collected&&f.x+f.w>-70);if(finalFileActive&&finalFiles.length===0)finalFileActive=false;
+}
+function chaosRunMultiplier(){
+  let m=1;
+  if(partyTimer>0)m*=1.15;
+  if(logisticsRushTimer>0)m*=1.30;
+  if(vacationTimer>0)m*=.82;
+  return m;
+}
+function drawCorporateChaos(){
+  ctx.save();
+  if(approvalTimer>0){
+    const labels=['НА ДОРАБОТКУ','СОГЛАСОВАНО','ВЕРНУТЬ','ЕЩЁ КРУГ'];
+    const x=W*.5+Math.sin(approvalPhase)*W*.28;
+    ctx.translate(x,H*.42);ctx.rotate(Math.sin(approvalPhase*.7)*.12);
+    ctx.fillStyle='#ef4444';ctx.fillRect(-95,-28,190,56);ctx.fillStyle='#fff';ctx.font='900 20px Arial';ctx.textAlign='center';
+    ctx.fillText(labels[((approvalPhase*.8)|0)%labels.length],0,7);
+  }
+  if(inventoryTimer>0){
+    ctx.fillStyle='rgba(17,24,39,.76)';ctx.fillRect(W*.08,H*.61,W*.84,74);ctx.fillStyle='#fff';ctx.font='900 18px Arial';ctx.textAlign='center';
+    ctx.fillText('ИНВЕНТАРИЗАЦИЯ',W*.5,H*.64);ctx.font='800 14px Arial';ctx.fillText('коробка '+(47-Math.floor(inventoryTimer/12))+'/47 · вешалка '+(680-Math.floor(inventoryTimer))+'/680',W*.5,H*.68);
+  }
+  if(promoTimer>0){
+    const tags=['-70%','-50%','2+1','SALE','-99% НА НЕРВЫ'];
+    ctx.font='900 28px Arial';ctx.textAlign='center';
+    tags.forEach((t,i)=>{ctx.save();ctx.translate(75+(i*143)%W,190+(i%3)*160);ctx.rotate((i-2)*.12);ctx.fillStyle=i%2?'#facc15':'#ef4444';ctx.fillRect(-55,-28,110,56);ctx.fillStyle='#111827';ctx.fillText(t,0,10);ctx.restore();});
+  }
+  if(galyaOnlineTimer>0&&ratImg.complete&&ratImg.naturalWidth){
+    const x=(performance.now()*.18)%(W+160)-80;ctx.drawImage(ratImg,x,H*.10,115,115);
+  }
+  if(unreadTimer>0){
+    ctx.fillStyle='rgba(220,38,38,.9)';ctx.beginPath();ctx.roundRect(W*.30,H*.12,W*.40,58,18);ctx.fill();ctx.fillStyle='#fff';ctx.font='900 22px Arial';ctx.textAlign='center';ctx.fillText('📨 127 непрочитанных',W*.5,H*.151);
+  }
+  finalFiles.forEach(drawFinalFile);memeObjects.forEach(drawMemeObject);
+  
+  if(deliveryRainTimer>0){
+    ctx.font='34px Apple Color Emoji,Segoe UI Emoji,sans-serif';ctx.textAlign='center';
+    const t=performance.now()/18;
+    for(let i=0;i<8;i++){
+      const x=(i*97+43)%W;
+      const y=((t+i*137)%H);
+      ctx.fillText('📦',x,y);
+    }
+  }
+ctx.restore();
+}
+function drawDarkness(){
+  if(darkTimer<=0)return;
+  ctx.save();ctx.fillStyle='rgba(0,0,0,.89)';ctx.fillRect(0,0,W,H);ctx.globalCompositeOperation='destination-out';
+  const g=ctx.createRadialGradient(player.x+70,player.y+80,25,player.x+70,player.y+80,150);
+  g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(player.x+70,player.y+80,160,0,Math.PI*2);ctx.fill();ctx.restore();
+}
+
+
+// ================= VISUAL MAYHEM 2.2 =================
+let westernTimer=0,bossIntroTimer=0,bossIntroScale=1;
+let cctvTimer=0,excelTimer=0,pptTimer=0,teamsTimer=0,prodBugTimer=0;
+let legendTimer=0,comboFreezeTimer=0,nearMissTimer=0,slowMoFxTimer=0;
+let oneCVisualTimer=0,systemNoticeTimer=0,systemNoticeText='';
+let coffeeHandTimer=0,emptyCupTimer=0,taskOrbitTimer=0;
+let storeCrownWobble=0,deliveryRainTimer=0,discoTimer=0,cheapPixelTimer=0;
+let playerGhosts=0,westernDust=[];
+let lastDodgeAt=0,lastJumpAt=0,visualModeNext=520;
+let visualModeCurrent='';
+
+const visualModePool=['cctv','excel','ppt','teams','prodBug','tasks','system'];
+const fakeNotices=[
+ 'Обновление политики безопасности',
+ 'Ваш пароль истёк',
+ 'До конца смены: неизвестно',
+ 'Синхронизация 1С: 99%',
+ 'Встреча началась 4 минуты назад',
+ 'Недостаточно прав для отдыха',
+ 'Файл final_final_REAL занят другим пользователем'
+];
+
+function triggerVisualMode(type=null){
+  type=type||visualModePool[(Math.random()*visualModePool.length)|0];
+  visualModeCurrent=type;
+  if(type==='cctv'){cctvTimer=260;toastV2('📹 Склад · камера 4 · REC',1700);}
+  else if(type==='excel'){excelTimer=260;toastV2('📊 EXCEL MODE',1500);}
+  else if(type==='ppt'){pptTimer=240;toastV2('📽 POWERPOINT MODE',1500);}
+  else if(type==='teams'){teamsTimer=260;toastV2('🎥 СОЗВОН: 4 участника',1700);}
+  else if(type==='prodBug'){prodBugTimer=220;playerGhosts=3;toastV2('🐛 БАГ ПРОДАКШЕНА',1600);}
+  else if(type==='tasks'){taskOrbitTimer=320;toastV2('🧠 СЛИШКОМ МНОГО ЗАДАЧ',1600);}
+  else{
+    systemNoticeTimer=220;
+    systemNoticeText=fakeNotices[(Math.random()*fakeNotices.length)|0];
+  }
+}
+
+function updateVisualMayhem(dt){
+  const dec=v=>Math.max(0,v-dt);
+  westernTimer=dec(westernTimer);bossIntroTimer=dec(bossIntroTimer);
+  cctvTimer=dec(cctvTimer);excelTimer=dec(excelTimer);pptTimer=dec(pptTimer);
+  teamsTimer=dec(teamsTimer);prodBugTimer=dec(prodBugTimer);legendTimer=dec(legendTimer);
+  comboFreezeTimer=dec(comboFreezeTimer);nearMissTimer=dec(nearMissTimer);slowMoFxTimer=dec(slowMoFxTimer);
+  oneCVisualTimer=dec(oneCVisualTimer);systemNoticeTimer=dec(systemNoticeTimer);
+  coffeeHandTimer=dec(coffeeHandTimer);emptyCupTimer=dec(emptyCupTimer);taskOrbitTimer=dec(taskOrbitTimer);
+  deliveryRainTimer=dec(deliveryRainTimer);discoTimer=dec(discoTimer);cheapPixelTimer=dec(cheapPixelTimer);
+  if(prodBugTimer===0)playerGhosts=0;
+  if(running && score>=2000)legendTimer=Math.max(legendTimer,10);
+  if(running && score>=visualModeNext && !remoteTimer && !bossIntroTimer){
+    triggerVisualMode();
+    visualModeNext=score+420+Math.random()*480;
+  }
+  for(const d of westernDust){d.x-=d.vx*dt;d.y+=d.vy*dt;d.life-=dt;}
+  westernDust=westernDust.filter(d=>d.life>0);
+}
+
+function drawWesternFx(){
+  if(westernTimer<=0)return;
+  ctx.save();
+  ctx.fillStyle='rgba(177,113,43,.22)';ctx.fillRect(0,0,W,H);
+  ctx.globalAlpha=.55;ctx.fillStyle='#d6b074';
+  for(const d of westernDust){ctx.beginPath();ctx.arc(d.x,d.y,d.r,0,Math.PI*2);ctx.fill();}
+  ctx.globalAlpha=.95;ctx.fillStyle='#fff';ctx.strokeStyle='#5b3518';ctx.lineWidth=8;
+  ctx.font='900 42px Arial';ctx.textAlign='center';ctx.strokeText('КОННИЦА ПРИБЫЛА',W*.5,H*.20);ctx.fillText('КОННИЦА ПРИБЫЛА',W*.5,H*.20);
+  ctx.restore();
+}
+
+function drawBossIntroFx(){
+  if(bossIntroTimer<=0)return;
+  ctx.save();
+  const p=1-bossIntroTimer/72;
+  ctx.fillStyle='rgba(90,0,0,.42)';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#fff';ctx.strokeStyle='#7f1d1d';ctx.lineWidth=10;
+  ctx.font='900 58px Arial';ctx.textAlign='center';ctx.strokeText('ГАЛЯ В СЕТИ',W*.5,H*.22);ctx.fillText('ГАЛЯ В СЕТИ',W*.5,H*.22);
+  if(ratImg.complete&&ratImg.naturalWidth){
+    const sc=1.0+Math.sin(p*Math.PI)*.45;
+    const ww=210*sc,hh=210*sc;
+    ctx.globalAlpha=.96;ctx.drawImage(ratImg,W*.5-ww/2,H*.30-hh/2,ww,hh);
+  }
+  ctx.restore();
+}
+
+function drawExcelFx(){
+  if(excelTimer<=0)return;
+  ctx.save();ctx.globalAlpha=.22;ctx.strokeStyle='#16a34a';ctx.lineWidth=1;
+  for(let x=0;x<W;x+=72){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.globalAlpha=.8;ctx.fillStyle='#fff';ctx.font='700 12px Arial';ctx.textAlign='left';
+  for(let r=1;r<15;r++)ctx.fillText(String(r),6,r*48-10);
+  ctx.restore();
+}
+
+function drawCctvFx(){
+  if(cctvTimer<=0)return;
+  ctx.save();
+  ctx.globalAlpha=.23;ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  ctx.globalAlpha=.9;ctx.fillStyle='#fff';ctx.font='900 16px monospace';ctx.textAlign='left';
+  ctx.fillText('REC ●  СКЛАД / CAM 04',18,30);
+  ctx.textAlign='right';ctx.fillText(new Date().toLocaleTimeString('ru-RU'),W-18,30);
+  ctx.strokeStyle='rgba(255,255,255,.25)';ctx.lineWidth=1;
+  for(let y=0;y<H;y+=6){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.restore();
+}
+
+function drawPptFx(){
+  if(pptTimer<=0)return;
+  // PowerPoint mode remains active mechanically, but without the on-screen label.
+}
+
+function drawTeamsFx(){
+  if(teamsTimer<=0)return;
+  ctx.save();
+  const boxes=[[20,130],[W-170,130],[20,260],[W-170,260]];
+  const labels=['Вы','Без камеры','На mute','Галя'];
+  boxes.forEach((b,i)=>{
+    ctx.fillStyle='rgba(17,24,39,.82)';ctx.beginPath();ctx.roundRect(b[0],b[1],150,100,12);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='800 14px Arial';ctx.textAlign='center';
+    ctx.fillText(i===1?'📷❌':i===2?'🔇':i===3?'🐀':'🙂',b[0]+75,b[1]+50);
+    ctx.fillText(labels[i],b[0]+75,b[1]+87);
+  });
+  ctx.restore();
+}
+
+function drawSystemNotice(){
+  if(systemNoticeTimer<=0)return;
+  ctx.save();
+  ctx.fillStyle='rgba(255,255,255,.96)';ctx.strokeStyle='#9ca3af';ctx.lineWidth=2;
+  ctx.beginPath();ctx.roundRect(W*.12,H*.13,W*.76,92,16);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#111827';ctx.font='900 17px Arial';ctx.textAlign='left';
+  ctx.fillText('СИСТЕМНОЕ УВЕДОМЛЕНИЕ',W*.16,H*.165);
+  ctx.font='700 14px Arial';ctx.fillText(systemNoticeText,W*.16,H*.20);
+  ctx.restore();
+}
+
+function drawTaskOrbit(){
+  if(taskOrbitTimer<=0)return;
+  const em=['📦','📞','📊','☕','🧾','🏷️'];
+  ctx.save();ctx.font='28px Apple Color Emoji,Segoe UI Emoji,sans-serif';ctx.textAlign='center';
+  const t=performance.now()/350;
+  em.forEach((e,i)=>{
+    const a=t+i*Math.PI*2/em.length;
+    ctx.fillText(e,player.x+player.w*.65+Math.cos(a)*88,player.y+38+Math.sin(a)*52);
+  });
+  ctx.restore();
+}
+
+function drawLegendFx(){
+  if(legendTimer<=0)return;
+  ctx.save();
+  ctx.fillStyle='#fff';
+  ctx.strokeStyle='#92400e';
+  ctx.lineWidth=5;
+  ctx.font='900 20px Arial';
+  ctx.textAlign='center';
+  ctx.strokeText('РЕЖИМ ЛЕГЕНДЫ',W*.5,H*.09);
+  ctx.fillText('РЕЖИМ ЛЕГЕНДЫ',W*.5,H*.09);
+  ctx.restore();
+}
+
+function drawCheapPixelFx(){
+  if(cheapPixelTimer<=0)return;
+  ctx.save();ctx.globalAlpha=.14;ctx.fillStyle='#000';
+  for(let x=0;x<W;x+=16)for(let y=0;y<H;y+=16)if(((x+y)/16)%3===0)ctx.fillRect(x,y,8,8);
+  ctx.restore();
+}
+
+function drawDiscoFx(){
+  if(discoTimer<=0)return;
+  ctx.save();
+  const t=performance.now()/220;
+  for(let i=0;i<6;i++){
+    ctx.globalAlpha=.10;
+    ctx.fillStyle=`hsl(${(t*70+i*60)%360} 90% 55%)`;
+    ctx.beginPath();ctx.arc(W*(.1+i*.17),H*(.2+(i%2)*.35),130,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=.85;ctx.font='24px Apple Color Emoji,Segoe UI Emoji,sans-serif';ctx.textAlign='center';
+  for(let i=0;i<10;i++)ctx.fillText(i%2?'🎉':'✨',(i*83+performance.now()*.08)%W,120+(i%5)*110);
+  ctx.restore();
+}
+
+function drawCoffeeHand(){
+  if(coffeeHandTimer<=0)return;
+  ctx.save();ctx.font='34px Apple Color Emoji,Segoe UI Emoji,sans-serif';
+  ctx.fillText('☕',player.x+player.w*.95,player.y+player.h*.47);ctx.restore();
+}
+function drawEmptyCup(){
+  if(emptyCupTimer<=0)return;
+  ctx.save();ctx.font='28px Apple Color Emoji,Segoe UI Emoji,sans-serif';ctx.fillText('☕',W*.72,groundY-8);ctx.restore();
+}
+
+function drawVisualMayhem(){
+  drawExcelFx();drawPptFx();drawTeamsFx();drawCheapPixelFx();drawDiscoFx();
+  drawWesternFx();drawBossIntroFx();drawTaskOrbit();drawLegendFx();
+  drawCoffeeHand();drawEmptyCup();drawSystemNotice();drawCctvFx();
+
+  if(gasTimer>0){
+    ctx.save();ctx.globalAlpha=.72;ctx.fillStyle='#111827';
+    const yy=H*.46+Math.sin(performance.now()/180)*18;
+    ctx.beginPath();ctx.arc(W*.43,yy,8,0,Math.PI*2);ctx.arc(W*.57,yy,8,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#111827';ctx.lineWidth=5;ctx.beginPath();ctx.arc(W*.5,yy+25,22,.15*Math.PI,.85*Math.PI);ctx.stroke();
+    ctx.fillStyle='#fff';ctx.font='900 18px Arial';ctx.textAlign='center';ctx.fillText('ВИДИМОСТЬ 20%',W*.5,H*.56);
+    ctx.restore();
+  }
+  if(oneCVisualTimer>0){
+    ctx.save();ctx.fillStyle='rgba(229,231,235,.92)';ctx.strokeStyle='#4b5563';ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(W*.18,H*.18,W*.64,130,8);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#1f2937';ctx.font='900 17px Arial';ctx.textAlign='left';ctx.fillText('1С: Предприятие',W*.21,H*.215);
+    ctx.font='700 14px Arial';ctx.fillText('Статус: РАБОТАЕТ. НЕ ТРОГАТЬ.',W*.21,H*.255);
+    ctx.fillStyle='#16a34a';ctx.fillRect(W*.21,H*.28,W*.50,16);
+    ctx.restore();
+  }
+}
+
 
 let domDrunk=false, domGas=false;
 function syncDomFx(){
@@ -547,7 +970,7 @@ function onJumpFx(){
 }
 function onDodge(o){
  if(o.type==='deadline'){bossActive=false;combo=5;score+=120;sfxDeadlineWin();flash('255,215,70',.34);shake(8);comic('ГАЛЮ ОБОШЛИ!',W*.5,H*.27,54,72);comic('+120 М · КОМБО ×5',W*.5,H*.34,27,60);['💨','✅','🎉','⭐'].forEach((em,i)=>setTimeout(()=>burst(W*(.25+i*.17),H*.38,em,6,6),i*45));updateNerve(-8);telegramHaptic('medium');updateV2Hud();return;}
- sfxDodge(o.type);const em=o.type==='tequila'?'🥃':o.type==='spray'?'🌶️':'🐎';if(o.type==='rider'){riderDodges++;if(riderDodges>=3)unlockAchievement('rider3','Три казаха подряд');}
+ sfxDodge(o.type);nearMissTimer=24;if(combo>=2)slowMoFxTimer=18;const em=o.type==='tequila'?'🥃':o.type==='spray'?'🌶️':'🐎';if(o.type==='rider'){riderDodges++;if(riderDodges>=3)unlockAchievement('rider3','Три казаха подряд');}
  addCombo(1);let bonus=comboMultiplier()*2;if(selectedDept==='buying'&&o.type==='tequila')bonus+=8;score+=bonus;updateNerve(-1.5);comic(dodgeWords[(Math.random()*dodgeWords.length)|0],player.x+90,player.y+10,30,38);burst(player.x+105,player.y+70,em,o.type==='rider'?5:4,4.3);if(combo>=3)burst(player.x+82,player.y+34,'🔥',3,3.2);if(Math.random()<.32)flash('255,255,255',.10);
 }
 function milestoneFx(m){
@@ -566,7 +989,7 @@ function crashFx(o){
 }
 
 function tequilaReaction(o){
-  drunkTimer=DRUNK_DURATION;
+  drunkTimer=DRUNK_DURATION;prodBugTimer=Math.max(prodBugTimer,95);playerGhosts=2;
   hitCooldown=48;
   o.reacted=true; o.fade=1; o.spin=.16;
   sfxTequilaHit();
@@ -580,7 +1003,7 @@ function tequilaReaction(o){
 }
 
 function sprayReaction(o){
-  gasTimer=GAS_DURATION;
+  gasTimer=GAS_DURATION;taskOrbitTimer=Math.max(taskOrbitTimer,90);
   hitCooldown=52;
   o.reacted=true; o.fade=1; o.exploded=true;
   sfxSprayBlast();
@@ -595,7 +1018,7 @@ function sprayReaction(o){
 }
 
 function riderReaction(o){
-  stickTimer=STICK_DURATION;
+  stickTimer=STICK_DURATION;westernTimer=150;westernDust=[];for(let i=0;i<28;i++)westernDust.push({x:W*Math.random(),y:groundY-20-Math.random()*130,vx:1+Math.random()*3,vy:(Math.random()-.5)*.5,r:2+Math.random()*7,life:80+Math.random()*80});
   hitCooldown=60;
   o.reacted=true; o.knockback=1; o.hitAge=0;
   sfxStickWhack();
@@ -651,7 +1074,7 @@ function resetCombo(show=false){
   if (combo>1 && show) comic('КОМБО СГОРЕЛО!',W*.54,H*.22,32,44);
   combo=0; updateV2Hud();
 }
-function addCombo(amount=1){const before=combo;combo=Math.min(5,combo+amount);updateV2Hud();if(combo>=2)comic('КОМБО ×'+comboMultiplier(),W*.72,H*.18,26+combo*2,34);if(combo===5&&before<5){comic(deptComboPhrase(),W*.5,H*.40,31,55);if(selectedDept==='buying')score+=15;}}
+function addCombo(amount=1){const before=combo;combo=Math.min(5,combo+amount);updateV2Hud();if(combo>=2)comic('КОМБО ×'+comboMultiplier(),W*.72,H*.18,26+combo*2,34);if(combo===5&&before<5){comboFreezeTimer=18;comic(deptComboPhrase(),W*.5,H*.40,31,55);if(selectedDept==='buying')score+=15;}}
 
 function directorDeflect(o){
   o.passed=true;
@@ -685,6 +1108,13 @@ function activatePower(type){
 
 function handleObstacleHit(o){
   if (!running || hitCooldown>0 || o.reacted || fatalTimer>0) return;
+  if (shieldCharges>0) {
+    shieldCharges--; o.passed=true; o.reacted=true;
+    if(o.type==='rider'){o.hitAge=0;o.knockback=1;}else{o.fade=1;o.spin=.12;}
+    comic('ЭТО НЕ МОЙ ВОПРОС!',W*.50,H*.27,38,58);
+    speakFunny('Переадресуйте ответственному.');
+    flash('120,210,255',.20); shake(5); return;
+  }
   if (remoteTimer>0) { o.passed=true; o.reacted=true; o.fade=1; return; }
   if (directorTimer>0) { directorDeflect(o); return; }
   o.passed=true;
@@ -763,6 +1193,11 @@ document.getElementById('best').textContent = best;
 const player = {
   x: 92, y: groundY-122, w: 72, h: 122, vy: 0, onGround: true,
   jump() {
+    if (passwordTimer>0) {
+      toastV2('🔐 Сначала смените пароль!',700);
+      tone(120,.08,'square',.025,80);
+      return;
+    }
     if (this.onGround && running) {
       this.vy = selectedDept==='logistics' ? -19.8 : -18;
       this.onGround = false;
@@ -786,6 +1221,13 @@ function reset(){
  artifactInventory={badge:0,fabric:0,box:0,tag:0,tablet:0,tape:0};artifactTotal=0;nextArtifact=165+Math.random()*80;nextSecret=390+Math.random()*180;
  nextCorporateEvent=250+Math.random()*120;corporateEvent=null;eventTimer=0;eventStartHits=0;nextMiniBoss=690+Math.random()*120;miniBossActive=false;nextQuip=105+Math.random()*70;
  riderDodges=0;coffeeCount=0;tequilaHitsRun=0;storeVisited=false;newlyUnlocked=[];
+ nextMemeEvent=320+Math.random()*130;memeEvent=null;memeTimer=0;memeCooldown=0;shieldCharges=0;passwordTimer=0;darkTimer=0;vacationTimer=0;vacationReturnPending=false;
+ partyTimer=0;galyaOnlineTimer=0;approvalTimer=0;inventoryTimer=0;retailTiltTimer=0;logisticsRushTimer=0;cheapObstaclesTimer=0;promoTimer=0;coffeeOutTimer=0;unreadTimer=0;
+ typingTimer=0;typingOutcomePending=false;hrPollTimer=0;finalFiles=[];finalFileActive=false;memeObjects=[];setTyping(false);setHrPoll(false);obstacleSilenceTimer=0;
+ westernTimer=0;bossIntroTimer=0;cctvTimer=0;excelTimer=0;pptTimer=0;teamsTimer=0;prodBugTimer=0;legendTimer=0;
+ comboFreezeTimer=0;nearMissTimer=0;slowMoFxTimer=0;oneCVisualTimer=0;systemNoticeTimer=0;systemNoticeText='';
+ coffeeHandTimer=0;emptyCupTimer=0;taskOrbitTimer=0;deliveryRainTimer=0;discoTimer=0;cheapPixelTimer=0;
+ playerGhosts=0;westernDust=[];visualModeNext=480+Math.random()*180;visualModeCurrent='';
  shell.classList.remove('is-drunk','is-gassed');domDrunk=false;domGas=false;player.y=groundY-player.h;player.vy=0;player.onGround=true;
  document.getElementById('score').textContent='0';updateHitsHud();updateV2Hud();updateV2ExtraHud();
  toastV2((dayModifier==='FRIDAY'?'🥃 Пятница: текилы сегодня больше':dayModifier==='MONDAY'?'☕ Понедельник: кофе появляется чаще':'🏢 '+weekdayNames[weekday])+' · '+DEPTS[selectedDept].desc,2600);
@@ -793,7 +1235,7 @@ function reset(){
 
 function spawnObstacle(){
  const r=Math.random(),tequilaCut=dayModifier==='FRIDAY'?.54:.45,sprayCut=dayModifier==='FRIDAY'?.78:.75;
- let type=r<tequilaCut?'tequila':(r<sprayCut?'spray':'rider'),scale=.8+Math.random()*.35;const obstacleDrop=34;
+ let type=r<(partyTimer>0?.70:tequilaCut)?'tequila':(r<sprayCut?'spray':'rider'),scale=(.8+Math.random()*.35)*(cheapObstaclesTimer>0?.68:1);const obstacleDrop=34;
  if(type==='tequila'){const w=58*scale,h=112*scale;obstacles.push({type,x:W+30,y:groundY-h+obstacleDrop,w,h,wobble:Math.random()*Math.PI*2});}
  else if(type==='spray'){const w=48*scale,h=98*scale;obstacles.push({type,x:W+30,y:groundY-h+obstacleDrop,w,h,wobble:Math.random()*Math.PI*2});}
  else{scale=.76+Math.random()*.14;const w=182*scale,h=194*scale,riderDrop=22;obstacles.push({type,x:W+30,y:groundY-h+riderDrop,w,h,wobble:Math.random()*Math.PI*2});}
@@ -801,14 +1243,14 @@ function spawnObstacle(){
 
 function spawnCoffee(){bonuses.push({type:'coffee',x:W+35,y:groundY-205,w:58,h:70,wobble:Math.random()*Math.PI*2});nextCoffee=score+(260+Math.random()*150)*(dayModifier==='MONDAY'?.70:1);coffeeCooldown=90;}
 function spawnDeadline(){
-  bossActive=true;
+  bossActive=true;obstacleSilenceTimer=0;bossIntroTimer=72;
   obstacles.push({type:'deadline',x:W+45,y:groundY-160,w:150,h:160,wobble:0,boss:true});
   comic('🐀 ГАЛЯ!',W*.53,H*.26,62,68);
   flash('255,80,80',.18);
   updateV2Hud();
 }
 function collectCoffee(b){
- b.collected=true;coffeeCount++;sfxCoffee();flash('255,245,190',.24);burst(b.x+b.w*.5,b.y+b.h*.5,'☕',7,5);burst(b.x+b.w*.5,b.y+b.h*.5,'✨',5,4);updateNerve(-15);
+ b.collected=true;coffeeCount++;coffeeHandTimer=110;sfxCoffee();flash('255,245,190',.24);burst(b.x+b.w*.5,b.y+b.h*.5,'☕',7,5);burst(b.x+b.w*.5,b.y+b.h*.5,'✨',5,4);updateNerve(-15);
  if(hits>0){hits--;updateHitsHud();comic('КОФЕ СПАС!',W*.52,H*.28,50,60);comic('−1 СТОЛКНОВЕНИЕ',W*.52,H*.34,25,52);}
  else{const gain=selectedDept==='retail'?52:40;score+=gain;addCombo(1);comic('КОФЕ +'+gain+' М!',W*.52,H*.29,46,58);}
  if(coffeeCount>=5)unlockAchievement('coffee5','Пять кофе за смену');telegramHaptic('light');updateV2Hud();updateV2ExtraHud();
@@ -956,6 +1398,15 @@ function drawObstacle(o) {
 }
 
 function drawPlayer() {
+  if(playerGhosts>0){
+    ctx.save();ctx.globalAlpha=.18;
+    for(let g=1;g<=playerGhosts;g++){
+      ctx.save();ctx.translate(g*9,-g*4);ctx.strokeStyle='rgba(80,180,255,.35)';ctx.lineWidth=4;
+      ctx.strokeRect(player.x,player.y,player.w,player.h);ctx.restore();
+    }
+    ctx.restore();
+  }
+
   const x=player.x, y=player.y;
   const now=performance.now();
   ctx.save();
@@ -1129,7 +1580,7 @@ function drawPlayer() {
   if (remoteTimer>0) {
     // STORE: no glasses, add a crown above the head.
     ctx.save();
-    ctx.translate(x+36,y-17);
+    ctx.translate(x+36,y-17+Math.sin(performance.now()/95)*3);ctx.rotate(Math.sin(performance.now()/130)*.08);
     ctx.fillStyle='#facc15';
     ctx.strokeStyle='#92400e';
     ctx.lineWidth=2;
@@ -1158,7 +1609,15 @@ function drawPlayer() {
   }
 
   ctx.restore();
-  ctx.restore();
+  
+  if(vacationTimer>0){
+    ctx.save();
+    ctx.fillStyle='#111827';
+    ctx.fillRect(x+12,y+18,20,11);ctx.fillRect(x+40,y+18,20,11);ctx.fillRect(x+31,y+21,10,4);
+    ctx.fillStyle='#facc15';ctx.font='900 18px Arial';ctx.textAlign='center';ctx.fillText('ОТПУСК',x+36,y-16);
+    ctx.restore();
+  }
+ctx.restore();
 }
 
 function drawRemoteBackground(){
@@ -1265,40 +1724,70 @@ function gameOver(hit){
  best=Math.max(best,Math.floor(score));saveBest(best);document.getElementById('best').textContent=best;const meters=Math.floor(score);
  if(tequilaHitsRun===0&&meters>=700)unlockAchievement('noTequila','700 м без текилы');if(meters>=1500)unlockAchievement('1500','Старший по хаосу');
  const rank=getCareerRank(meters),panel=document.getElementById('startPanel');
- const lines=hit?.type==='tequila'?['Последняя текила была лишней.','Стеклотара ставит точку.']:hit?.type==='spray'?['Газовая программа завершена.','Баллончик закрыл смену.']:hit?.type==='deadline'?['Галя всё-таки догнала.','Перекур отменяется.']:['Конница забрала KPI.','Казахи закрыли смену.'];
+ const genericDeaths=['Ушла на созвон и не вернулась.','Погребена под поставкой.','1С победила.','Уволена кофе-машиной.','Согласование согласований завершено.','Пароль сменён. Сотрудник — нет.','HR просит оценить этот опыт от 1 до 10.'];
+ const lines=hit?.type==='tequila'?['Последняя текила была лишней.','Стеклотара ставит точку.','Текила закрыла квартал.']:hit?.type==='spray'?['Газовая программа завершена.','Баллончик закрыл смену.','Перцовый KPI выполнен.']:hit?.type==='deadline'?['Галя всё-таки догнала.','Перекур отменяется.','Галя нашла.']:['Конница забрала KPI.','Казахи закрыли смену.','Казахи выполнили план.'];
+ if(Math.random()<.35)lines.push(genericDeaths[(Math.random()*genericDeaths.length)|0]);
  const ach=newlyUnlocked.length?'<br>🏆 За забег: <b>'+newlyUnlocked.join(', ')+'</b>':'<br>🏆 Ачивок всего: <b>'+achievementCount()+'</b>';
- panel.querySelector('h1').textContent='Галя отмена!';panel.querySelector('p').innerHTML=`💀 ${hits}/${MAX_HITS} столкновений · <b>${meters} м</b><br>🎖 <b>${rank}</b><br>🏢 ${DEPTS[selectedDept].label}<br>${lines[(Math.random()*lines.length)|0]}${ach}`;
+ panel.querySelector('h1').textContent='📸 МЕМ-КАДР: Галя отмена!';panel.querySelector('p').innerHTML=`💀 ${hits}/${MAX_HITS} столкновений · <b>${meters} м</b><br>🎖 <b>${rank}</b><br>🏢 ${DEPTS[selectedDept].label}<br>${lines[(Math.random()*lines.length)|0]}${ach}`;
  document.getElementById('startBtn').textContent='Ещё раз 2.0';setTimeout(()=>{panel.style.display='grid';},620);setTimeout(()=>speakFunny('Галя отмена! '+rank),180);
 }
 
 function update(dt){
- updateFx(dt);updateV2Systems(dt);if(!running)return;
+ updateFx(dt);updateV2Systems(dt);updateCorporateChaos(dt);updateVisualMayhem(dt);if(!running)return;
+
+ // Spawn watchdog: special events may clear the boss object. Never let a stale
+ // bossActive flag permanently disable normal obstacles.
+ const deadlineStillExists=obstacles.some(o=>o.type==='deadline'&&!o.reacted);
+ if(bossActive&&!deadlineStillExists&&bossWarningTimer<=0){
+   bossActive=false;
+   spawnTimer=Math.min(spawnTimer,18);
+ }
+
+ // Outside deliberately obstacle-free locations, force recovery if the track
+ // has stayed empty for roughly two seconds.
+ const intentionallyQuiet=remoteTimer>0||vacationTimer>0||bossWarningTimer>0;
+ if(!intentionallyQuiet&&obstacles.length===0){
+   obstacleSilenceTimer+=dt;
+   if(obstacleSilenceTimer>120){
+     bossActive=false;
+     bossWarningTimer=0;
+     spawnTimer=Math.min(spawnTimer,1);
+     obstacleSilenceTimer=0;
+   }
+ } else {
+   obstacleSilenceTimer=0;
+ }
  player.vy+=.9*dt;player.y+=player.vy*dt;if(player.y>=groundY-player.h){player.y=groundY-player.h;player.vy=0;player.onGround=true;}
  coffeeCooldown=Math.max(0,coffeeCooldown-dt);powerCooldown=Math.max(0,powerCooldown-dt);
- if(remoteTimer<=0&&score>=nextCoffee&&coffeeCooldown<=0&&bonuses.length===0&&!bossActive&&bossWarningTimer<=0)spawnCoffee();
+ if(remoteTimer<=0&&coffeeOutTimer<=0&&score>=nextCoffee&&coffeeCooldown<=0&&bonuses.length===0&&!bossActive&&bossWarningTimer<=0)spawnCoffee();
  if(remoteTimer<=0&&score>=nextPower&&powerCooldown<=0&&powerups.length===0&&!bossActive&&bossWarningTimer<=0)spawnPowerup();
  if(remoteTimer<=0&&score>=nextBoss&&!bossActive&&bossWarningTimer<=0){bossWarningTimer=105;nextBoss+=500;sfxBossWarning();shake(6);flash('255,80,80',.16);comic('⚠️ ГАЛЯ БЛИЗКО!',W*.5,H*.25,43,76);updateV2Hud();}
  if(bossWarningTimer>0){bossWarningTimer=Math.max(0,bossWarningTimer-dt);if(bossWarningTimer===0&&remoteTimer<=0)spawnDeadline();}
- spawnTimer-=dt;if(remoteTimer<=0&&spawnTimer<=0&&!bossActive&&bossWarningTimer<=0){spawnObstacle();let base=Math.max(54,112-speed*2.2)+Math.random()*58;if(chaosTimer>0)base*=.65;if(corporateEvent?.type==='call')base*=1.45;spawnTimer=base;}
- const runSpeed=speed*(turboTimer>0?1.15:1)*(remoteTimer>0?1.08:1)*corporateSpeedMultiplier()*(chaosTimer>0?1.16:1);
+ spawnTimer-=dt;if(remoteTimer<=0&&spawnTimer<=0&&!bossActive&&bossWarningTimer<=0){spawnObstacle();let base=Math.max(54,112-speed*2.2)+Math.random()*58;if(chaosTimer>0)base*=.65;if(corporateEvent?.type==='call')base*=1.45;spawnTimer=base;obstacleSilenceTimer=0;}
+ const runSpeed=speed*(turboTimer>0?1.15:1)*(remoteTimer>0?1.08:1)*corporateSpeedMultiplier()*(chaosTimer>0?1.16:1)*chaosRunMultiplier();
  for(const o of obstacles){o.x-=runSpeed*dt;o.wobble+=.06*dt;if(o.reacted){if(o.type==='rider'){o.hitAge=(o.hitAge||0)+dt;o.x+=(15+Math.min(16,o.hitAge*.22))*dt;o.y-=Math.min(3.8,o.hitAge*.055)*dt;o.wobble+=.20*dt;}else{o.fade=(o.fade??1)-.065*dt;o.y+=2.2*dt;o.wobble+=(o.spin||.12)*dt;}}if(!o.passed&&o.x+o.w<player.x){o.passed=true;onDodge(o);}}
  obstacles=obstacles.filter(o=>o.x+o.w>-60&&(o.fade===undefined||o.fade>0));
  for(const b of bonuses){b.x-=runSpeed*dt;b.wobble+=.07*dt;if(!b.collected&&collision(player,b))collectCoffee(b);}bonuses=bonuses.filter(b=>!b.collected&&b.x+b.w>-50);
  for(const p of powerups){p.x-=runSpeed*dt;p.wobble+=.065*dt;if(!p.collected&&collision(player,p))collectPowerup(p);}powerups=powerups.filter(p=>!p.collected&&p.x+p.w>-60);
  for(const a of artifacts){a.x-=runSpeed*dt;a.wobble+=.065*dt;if(!a.collected&&collision(player,a))collectArtifact(a);}artifacts=artifacts.filter(a=>!a.collected&&a.x+a.w>-60);
- for(const s of secrets){s.x-=runSpeed*.86*dt;s.wobble+=.05*dt;if(!s.collected&&collision(player,s))collectSecret(s);}secrets=secrets.filter(s=>!s.collected&&s.x+s.w>-70);
+ for(const s of secrets){
+   s.x-=runSpeed*.86*dt;s.wobble+=.05*dt;
+   if(!s.collected&&collision(player,s))collectSecret(s);
+   if(!s.collected&&s.newbie&&!s.ignored&&s.x+s.w<player.x){s.ignored=true;unlockAchievement('ignoreNewbie','Не помог новичку');comic('СТОЛОВУЮ ТАК И НЕ НАШЁЛ',W*.52,H*.31,24,46);}
+  }
+  secrets=secrets.filter(s=>!s.collected&&s.x+s.w>-70);
  score+=runSpeed*.055*dt*(turboTimer>0?1.7:1)*(DEPTS[selectedDept]?.score||1);speed=Math.min(MAX_SPEED,BASE_SPEED+score/180);document.getElementById('score').textContent=Math.floor(score);
  if(score>=nextMilestone){milestoneFx(nextMilestone);nextMilestone+=100;}updateV2Hud();
  for(const o of obstacles){if(!o.reacted&&obstacleCollision(player,o)){handleObstacleHit(o);break;}}
 }
 
 function draw(){
- ctx.save();if(screenShake>0)ctx.translate((Math.random()-.5)*screenShake,(Math.random()-.5)*screenShake);drawBackground();
+ ctx.save();if(comboFreezeTimer>0){ctx.translate(W*.5,H*.5);ctx.scale(1.025,1.025);ctx.translate(-W*.5,-H*.5);}if(nearMissTimer>0){ctx.translate(W*.5,H*.5);ctx.scale(1.015,1.015);ctx.translate(-W*.5,-H*.5);}if(retailTiltTimer>0){ctx.translate(W/2,H/2);ctx.rotate(Math.sin(performance.now()/90)*.018);ctx.translate(-W/2,-H/2);}if(screenShake>0)ctx.translate((Math.random()-.5)*screenShake,(Math.random()-.5)*screenShake);drawBackground();
  bonuses.forEach(drawCoffee);artifacts.forEach(drawArtifact);secrets.forEach(drawSecret);powerups.forEach(drawPowerup);
  obstacles.forEach(o=>{ctx.save();if(o.fade!==undefined)ctx.globalAlpha=Math.max(0,o.fade);if(o.type==='rider'&&o.reacted){const cx=o.x+o.w/2,cy=o.y+o.h/2,ang=Math.min(.48,(o.hitAge||0)*.012);ctx.translate(cx,cy);ctx.rotate(-ang);ctx.translate(-cx,-cy);}drawObstacle(o);ctx.restore();});
  drawPlayer();
  if(running&&(speed>11||turboTimer>0||chaosTimer>0)){ctx.strokeStyle='rgba(255,255,255,.18)';ctx.lineWidth=3;for(let i=0;i<(chaosTimer>0?20:turboTimer>0?16:10);i++){const yy=265+i*62,len=35+(i%3)*26;ctx.beginPath();ctx.moveTo(W-len-(i*71)%W,yy);ctx.lineTo(W-(i*71)%W,yy);ctx.stroke();}}
- drawFx();drawCorporateEvent();ctx.restore();drawDrunkOverlay();drawGasOverlay();
+ drawFx();drawCorporateEvent();drawCorporateChaos();drawVisualMayhem();ctx.restore();drawDrunkOverlay();drawGasOverlay();drawDarkness();
  if(chaosTimer>0){ctx.save();ctx.globalAlpha=.09+.035*Math.sin(performance.now()/70);ctx.fillStyle='#ef4444';ctx.fillRect(0,0,W,H);ctx.restore();}
  if(screenFlash>0){ctx.save();ctx.globalAlpha=screenFlash;ctx.fillStyle=`rgb(${flashRgb})`;ctx.fillRect(0,0,W,H);ctx.restore();}
 }
@@ -1312,10 +1801,16 @@ requestAnimationFrame(loop);
 document.addEventListener('visibilitychange',()=>{ appActive=!document.hidden; last=performance.now(); }, {passive:true});
 
 function start(){
- ensureAudio();const panel=document.getElementById('startPanel');panel.querySelector('h1').textContent='TEQUILA RUN 2.0';panel.querySelector('p').textContent='Артефакты, события, ачивки, секретные сотрудники и нервная система Гали. Выживи в Crockid.';document.getElementById('startBtn').textContent='Старт 2.0';
- try{if(tg&&tg.isVersionAtLeast&&tg.isVersionAtLeast('8.0')&&!tg.isFullscreen)tg.requestFullscreen();}catch(_){}try{if(tg)tg.expand();}catch(_){}syncViewportHeight();reset();running=true;panel.style.display='none';sfxStart();flash('255,255,255',.18);comic('TEQUILA RUN 2.0!',W*.5,H*.30,52,62);setTimeout(()=>comic(DEPTS[selectedDept].emoji+' '+DEPTS[selectedDept].label,W*.5,H*.36,32,54),130);
+ ensureAudio();const panel=document.getElementById('startPanel');panel.querySelector('h1').textContent='TEQUILA RUN 2.2';panel.querySelector('p').textContent='Артефакты, события, ачивки, секретные сотрудники и нервная система Гали. Выживи в Crockid.';document.getElementById('startBtn').textContent='Старт 2.0';
+ try{if(tg&&tg.isVersionAtLeast&&tg.isVersionAtLeast('8.0')&&!tg.isFullscreen)tg.requestFullscreen();}catch(_){}try{if(tg)tg.expand();}catch(_){}syncViewportHeight();reset();running=true;panel.style.display='none';sfxStart();flash('255,255,255',.18);comic('TEQUILA RUN 2.2!',W*.5,H*.30,52,62);setTimeout(()=>comic(DEPTS[selectedDept].emoji+' '+DEPTS[selectedDept].label,W*.5,H*.36,32,54),130);
 }
 document.querySelectorAll('.deptBtn').forEach(btn=>{btn.addEventListener('pointerdown',e=>e.stopPropagation());btn.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();selectedDept=btn.dataset.dept||'retail';document.querySelectorAll('.deptBtn').forEach(b=>b.classList.toggle('selected',b===btn));updateV2ExtraHud();toastV2(DEPTS[selectedDept].emoji+' '+DEPTS[selectedDept].label+': '+DEPTS[selectedDept].desc,1500);});});
+
+document.getElementById('hrLike').addEventListener('click',e=>{
+  e.preventDefault();e.stopPropagation();hrPollTimer=0;setHrPoll(false);score+=40;updateNerve(-12);
+  toastV2('💚 HR: спасибо за искренний ответ · +40 м',1800);unlockAchievement('hr','Прошёл обязательную HR-активность');
+});
+
 document.getElementById('startBtn').onclick=start;
 // WebKit requires AudioContext creation/resume from a real user gesture.
 const unlockAudioOnce=()=>{ ensureAudio(); document.removeEventListener('touchstart',unlockAudioOnce); document.removeEventListener('pointerdown',unlockAudioOnce); };
